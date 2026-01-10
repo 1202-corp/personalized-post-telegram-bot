@@ -372,6 +372,15 @@ async def on_view_feed(
                             chat_id=chat_id,
                             media=media_items,
                         )
+                        # Send text with buttons separately
+                        await message_manager.bot.send_message(
+                            chat_id=chat_id,
+                            text=post_text,
+                            parse_mode="MarkdownV2",
+                            reply_markup=get_feed_post_keyboard(post.get("id"), lang) if post.get("id") else None,
+                            link_preview_options=LinkPreviewOptions(is_disabled=True),
+                        )
+                        sent_with_caption = True
                 else:
                     # Single photo - try to send with caption if it fits
                     mid = media_ids[0]

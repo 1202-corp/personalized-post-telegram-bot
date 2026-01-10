@@ -536,6 +536,17 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
                         media=media_items,
                     )
                     media_message_ids.extend(m.message_id for m in msgs)
+                    # Send text with buttons separately
+                    from aiogram.types import LinkPreviewOptions
+                    btn_msg = await message_manager.bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        parse_mode="MarkdownV2",
+                        reply_markup=get_training_post_keyboard(post.get("id"), lang) if post.get("id") else None,
+                        link_preview_options=LinkPreviewOptions(is_disabled=True),
+                    )
+                    media_message_ids.append(btn_msg.message_id)
+                    sent_with_caption = True
             else:
                 # Single photo - use cache or download
                 mid = media_ids[0]
@@ -908,6 +919,16 @@ async def send_initial_best_post(
                         chat_id=chat_id,
                         media=media_items,
                     )
+                    # Send text with buttons separately
+                    from aiogram.types import LinkPreviewOptions
+                    await message_manager.bot.send_message(
+                        chat_id=chat_id,
+                        text=post_text,
+                        parse_mode="MarkdownV2",
+                        reply_markup=get_feed_post_keyboard(initial_best_post.get("id")) if initial_best_post.get("id") else None,
+                        link_preview_options=LinkPreviewOptions(is_disabled=True),
+                    )
+                    sent_with_caption = True
             else:
                 mid = media_ids[0]
                 try:

@@ -273,18 +273,24 @@ class RetentionService:
                             if isinstance(res, Exception) or not res:
                                 continue
                             input_file = BufferedInputFile(res, filename=f"{mid}.jpg")
-                            # Add caption only to first item
-                            if i == 0 and caption_fits:
-                                media_items.append(InputMediaPhoto(media=input_file, caption=post_text, parse_mode="MarkdownV2"))
-                            else:
-                                media_items.append(InputMediaPhoto(media=input_file))
+                            # No caption on media group - will send text separately with buttons
+                            media_items.append(InputMediaPhoto(media=input_file))
                         
                         if media_items:
                             await self.message_manager.bot.send_media_group(
                                 chat_id=user_id,
                                 media=media_items,
                             )
-                            sent_with_caption = caption_fits and len(media_items) > 0
+                            # Send text with buttons separately
+                            from aiogram.types import LinkPreviewOptions
+                            await self.message_manager.bot.send_message(
+                                chat_id=user_id,
+                                text=post_text,
+                                parse_mode="MarkdownV2",
+                                reply_markup=get_feed_post_keyboard(post_id, lang) if post_id else None,
+                                link_preview_options=LinkPreviewOptions(is_disabled=True),
+                            )
+                            sent_with_caption = True
                     else:
                         # Single photo
                         photo_bytes = await user_bot.get_photo(channel_username, media_ids[0])
@@ -511,6 +517,16 @@ class RetentionService:
                             chat_id=user_telegram_id,
                             media=media_items,
                         )
+                        # Send text with buttons separately
+                        from aiogram.types import LinkPreviewOptions
+                        await self.message_manager.bot.send_message(
+                            chat_id=user_telegram_id,
+                            text=nudge_text,
+                            parse_mode="MarkdownV2",
+                            reply_markup=get_feed_post_keyboard(post.get("id")) if post.get("id") else None,
+                            link_preview_options=LinkPreviewOptions(is_disabled=True),
+                        )
+                        sent_with_caption = True
                 else:
                     mid = media_ids[0]
                     try:
@@ -593,6 +609,16 @@ class RetentionService:
                             chat_id=user_telegram_id,
                             media=media_items,
                         )
+                        # Send text with buttons separately
+                        from aiogram.types import LinkPreviewOptions
+                        await self.message_manager.bot.send_message(
+                            chat_id=user_telegram_id,
+                            text=feed_text,
+                            parse_mode="MarkdownV2",
+                            reply_markup=get_feed_post_keyboard(post.get("id")) if post.get("id") else None,
+                            link_preview_options=LinkPreviewOptions(is_disabled=True),
+                        )
+                        sent_with_caption = True
                 else:
                     mid = media_ids[0]
                     try:
