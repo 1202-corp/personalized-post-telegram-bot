@@ -410,7 +410,7 @@ async def on_view_feed(
                         chat_id=chat_id,
                         video=input_file,
                         caption=post_text,
-                        parse_mode="Markdown",
+                        parse_mode="MarkdownV2",
                         reply_markup=get_feed_post_keyboard(post.get("id"), lang),
                     )
                     sent_with_caption = True
@@ -424,7 +424,7 @@ async def on_view_feed(
             await message_manager.bot.send_message(
                 chat_id=chat_id,
                 text=post_text,
-                parse_mode="Markdown",
+                parse_mode="MarkdownV2",
                 reply_markup=get_feed_post_keyboard(post.get("id"), lang),
                 link_preview_options=LinkPreviewOptions(is_disabled=True),
             )

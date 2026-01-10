@@ -92,10 +92,10 @@ class RealtimeFeedService:
     ):
         """Send a new post notification to a user."""
         try:
-            # Format the post
+            # Format the post - keep original text with Markdown
             channel_username = post.get("channel_username", "")
             msg_id = post.get("telegram_message_id")
-            text = post.get("text", "")[:500]
+            text = post.get("text", "")
             
             # Create header with link
             if channel_username and msg_id:
@@ -120,7 +120,7 @@ class RealtimeFeedService:
                         chat_id=user_id,
                         photo=input_file,
                         caption=full_text[:1024],
-                        parse_mode="Markdown",
+                        parse_mode="MarkdownV2",
                         reply_markup=get_feed_post_keyboard(post.get("id"), lang),
                     )
                 else:
@@ -139,7 +139,7 @@ class RealtimeFeedService:
         await self.bot.send_message(
             chat_id=user_id,
             text=text,
-            parse_mode="Markdown",
+            parse_mode="MarkdownV2",
             reply_markup=get_feed_post_keyboard(post.get("id"), lang),
         )
 

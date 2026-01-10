@@ -234,8 +234,20 @@ class RetentionService:
             channel_title = post_data.get("channel_title") or channel_username
             msg_id = post_data.get("telegram_message_id")
             post_id = post_data.get("post_id") or post_data.get("id")
-            text = escape_md(post_data.get("text") or "")[:500]
+            # Keep original text without escaping - it already has Markdown formatting
+            raw_text = post_data.get("text") or ""
             media_type = post_data.get("media_type")
+            media_file_id = post_data.get("media_file_id") or ""
+            
+            # Parse media IDs for albums
+            media_ids: list[int] = []
+            if media_file_id:
+                for part in media_file_id.split(","):
+                    part = part.strip()
+                    if part.isdigit():
+                        media_ids.append(int(part))
+            elif msg_id:
+                media_ids.append(msg_id)
             
             # Build header with link to original post
             if channel_username and msg_id:
@@ -243,31 +255,56 @@ class RetentionService:
             else:
                 header = f"📰 *{escape_md(channel_title)}*\n\n"
             
-            post_text = header + (text if text else "_[Media content]_")
+            post_text = header + (raw_text if raw_text else "_[Media content]_")
             caption_fits = len(post_text) <= TELEGRAM_CAPTION_LIMIT
             sent_with_caption = False
             
             # Try to send with media
-            if media_type == "photo" and channel_username and msg_id:
+            if media_type == "photo" and channel_username and media_ids:
                 try:
-                    photo_bytes = await user_bot.get_photo(channel_username, msg_id)
-                    if photo_bytes:
-                        if caption_fits:
-                            await self.message_manager.send_onetime(
-                                user_id,
-                                post_text,
-                                reply_markup=get_feed_post_keyboard(post_id, lang) if post_id else None,
-                                tag="realtime_post",
-                                photo_bytes=photo_bytes,
-                                photo_filename=f"{msg_id}.jpg",
-                            )
-                            sent_with_caption = True
-                        else:
-                            input_file = BufferedInputFile(photo_bytes, filename=f"{msg_id}.jpg")
-                            await self.message_manager.bot.send_photo(
+                    if len(media_ids) > 1:
+                        # Album - send as media group
+                        import asyncio
+                        tasks = [user_bot.get_photo(channel_username, mid) for mid in media_ids]
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+                        
+                        media_items: list[InputMediaPhoto] = []
+                        for i, (mid, res) in enumerate(zip(media_ids, results)):
+                            if isinstance(res, Exception) or not res:
+                                continue
+                            input_file = BufferedInputFile(res, filename=f"{mid}.jpg")
+                            # Add caption only to first item
+                            if i == 0 and caption_fits:
+                                media_items.append(InputMediaPhoto(media=input_file, caption=post_text, parse_mode="MarkdownV2"))
+                            else:
+                                media_items.append(InputMediaPhoto(media=input_file))
+                        
+                        if media_items:
+                            await self.message_manager.bot.send_media_group(
                                 chat_id=user_id,
-                                photo=input_file,
+                                media=media_items,
                             )
+                            sent_with_caption = caption_fits and len(media_items) > 0
+                    else:
+                        # Single photo
+                        photo_bytes = await user_bot.get_photo(channel_username, media_ids[0])
+                        if photo_bytes:
+                            if caption_fits:
+                                await self.message_manager.send_onetime(
+                                    user_id,
+                                    post_text,
+                                    reply_markup=get_feed_post_keyboard(post_id, lang) if post_id else None,
+                                    tag="realtime_post",
+                                    photo_bytes=photo_bytes,
+                                    photo_filename=f"{media_ids[0]}.jpg",
+                                )
+                                sent_with_caption = True
+                            else:
+                                input_file = BufferedInputFile(photo_bytes, filename=f"{media_ids[0]}.jpg")
+                                await self.message_manager.bot.send_photo(
+                                    chat_id=user_id,
+                                    photo=input_file,
+                                )
                 except Exception as e:
                     logger.warning(f"Failed to get photo for realtime post: {e}")
             
@@ -281,7 +318,7 @@ class RetentionService:
                                 chat_id=user_id,
                                 video=input_file,
                                 caption=post_text,
-                                parse_mode="Markdown",
+                                parse_mode="MarkdownV2",
                                 reply_markup=get_feed_post_keyboard(post_id, lang) if post_id else None,
                             )
                             sent_with_caption = True
@@ -312,7 +349,8 @@ class RetentionService:
             channel_title = escape_md(post.get("channel_title", "Unknown"))
             channel_username = (post.get("channel_username") or "").lstrip("@")
             msg_id = post.get("telegram_message_id")
-            text = escape_md(post.get("text") or "")[:500]
+            # Keep original text with Markdown formatting
+            raw_text = post.get("text") or ""
             
             # Build header
             if channel_username and msg_id:
@@ -320,7 +358,7 @@ class RetentionService:
             else:
                 header = f"📰 *{channel_title}*\n\n"
             
-            post_text = header + text
+            post_text = header + raw_text
             
             # Send with rating buttons
             await self.message_manager.send_onetime(

@@ -4,11 +4,11 @@ from aiogram.types import BufferedInputFile, InputMediaPhoto, InlineKeyboardMark
 # Telegram caption limit
 TELEGRAM_CAPTION_LIMIT = 1024
 
-_MD_SPECIAL_CHARS = ("\\", "_", "*", "`", "[")
+_MD_V2_SPECIAL_CHARS = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\']
 
 
 def escape_md(text: str | None) -> str:
-    """Escape user-provided text for Markdown parse mode.
+    """Escape user-provided text for MarkdownV2 parse mode.
 
     We keep our own formatting (headers, bold, etc.) in templates
     and only apply this to dynamic values (user names, channel titles,
@@ -17,8 +17,10 @@ def escape_md(text: str | None) -> str:
     if not text:
         return ""
     result = str(text)
-    for ch in _MD_SPECIAL_CHARS:
-        result = result.replace(ch, f"\\{ch}")
+    # Escape backslash first to avoid double-escaping
+    result = result.replace('\\', '\\\\')
+    for ch in _MD_V2_SPECIAL_CHARS[:-1]:  # Skip backslash, already done
+        result = result.replace(ch, f'\\{ch}')
     return result
 
 
