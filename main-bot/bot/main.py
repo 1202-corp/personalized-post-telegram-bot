@@ -55,7 +55,7 @@ async def main():
     # Initialize bot with default properties
     bot = Bot(
         token=settings.telegram_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN_V2)
     )
     
     # Initialize dispatcher with memory storage

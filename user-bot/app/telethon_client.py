@@ -27,6 +27,83 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def escape_markdown_v2(text: str) -> str:
+    """Escape special characters for MarkdownV2."""
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
+
+def get_message_markdown(message) -> str:
+    """Get message text with MarkdownV2 formatting.
+    
+    Converts Telegram entities to MarkdownV2 format with proper escaping.
+    """
+    text = message.raw_text or message.message or ""
+    entities = message.entities
+    
+    if not entities or not text:
+        return escape_markdown_v2(text)
+    
+    # Sort entities by offset
+    sorted_entities = sorted(entities, key=lambda e: e.offset)
+    
+    # Build result piece by piece
+    result = []
+    last_end = 0
+    
+    for entity in sorted_entities:
+        start = entity.offset
+        end = entity.offset + entity.length
+        entity_type = type(entity).__name__
+        
+        # Add escaped text before this entity
+        if start > last_end:
+            result.append(escape_markdown_v2(text[last_end:start]))
+        
+        # Get entity content (escaped)
+        content = text[start:end]
+        escaped_content = escape_markdown_v2(content)
+        
+        # Apply formatting based on entity type
+        if entity_type == "MessageEntityBold":
+            result.append(f"*{escaped_content}*")
+        elif entity_type == "MessageEntityItalic":
+            result.append(f"_{escaped_content}_")
+        elif entity_type == "MessageEntityCode":
+            # Code doesn't need escaping inside
+            result.append(f"`{content}`")
+        elif entity_type == "MessageEntityPre":
+            result.append(f"```\n{content}\n```")
+        elif entity_type == "MessageEntityStrike":
+            result.append(f"~{escaped_content}~")
+        elif entity_type == "MessageEntityUnderline":
+            result.append(f"__{escaped_content}__")
+        elif entity_type == "MessageEntityTextUrl":
+            # URL needs escaping for special chars
+            escaped_url = entity.url.replace(')', '\\)').replace('(', '\\(')
+            result.append(f"[{escaped_content}]({escaped_url})")
+        elif entity_type == "MessageEntityBlockquote":
+            # Blockquote: escape content and add > to each line
+            lines = escaped_content.split('\n')
+            quoted = '\n'.join(f">{line}" for line in lines)
+            result.append(quoted)
+        elif entity_type == "MessageEntitySpoiler":
+            result.append(f"||{escaped_content}||")
+        else:
+            # Unknown entity - just add escaped content
+            result.append(escaped_content)
+        
+        last_end = end
+    
+    # Add remaining text after last entity
+    if last_end < len(text):
+        result.append(escape_markdown_v2(text[last_end:]))
+    
+    return ''.join(result)
+
+
 class TelethonClientWrapper:
     """
     Wrapper around Telethon client for channel operations.
@@ -204,9 +281,12 @@ class TelethonClientWrapper:
 
             # Process single messages: keep only posts with non-empty text
             for msg in singles:
-                text = (msg.message or "").strip()
-                if not text:
+                raw_text = (msg.message or "").strip()
+                if not raw_text:
                     continue  # skip pure-media posts without caption
+                
+                # Get message text
+                text = get_message_markdown(msg)
 
                 posts.append({
                     "telegram_message_id": msg.id,
@@ -232,7 +312,8 @@ class TelethonClientWrapper:
                     # Album has no caption text, skip
                     continue
 
-                text = (main.message or "").strip()
+                # Get message text
+                text = get_message_markdown(main)
                 # Collect all message IDs in the album for later media group sending
                 all_ids = sorted({m.id for m in group_messages})
                 media_file_id = ",".join(str(mid) for mid in all_ids)
@@ -369,6 +450,54 @@ class TelethonClientWrapper:
         if self._event_handler_registered:
             return
         
+        # Track pending album messages for grouping
+        pending_albums: dict[int, list] = {}
+        album_timers: dict[int, asyncio.Task] = {}
+        
+        async def process_album(grouped_id: int, channel_id: int, channel_username: str, channel_title: str):
+            """Process collected album messages."""
+            await asyncio.sleep(1.5)  # Wait for all album messages to arrive
+            
+            if grouped_id not in pending_albums:
+                return
+            
+            messages = pending_albums.pop(grouped_id, [])
+            album_timers.pop(grouped_id, None)
+            
+            if not messages:
+                return
+            
+            # Sort by message id
+            messages.sort(key=lambda m: m.id)
+            
+            # Find message with text (caption)
+            main_msg = None
+            for m in messages:
+                if (m.message or "").strip():
+                    main_msg = m
+                    break
+            
+            if main_msg is None:
+                main_msg = messages[0]
+            
+            # Get message text
+            text = get_message_markdown(main_msg)
+            all_ids = [m.id for m in messages]
+            media_file_id = ",".join(str(mid) for mid in all_ids)
+            
+            post_data = {
+                "telegram_message_id": main_msg.id,
+                "text": text,
+                "media_type": self._get_media_type(main_msg),
+                "media_file_id": media_file_id,
+                "posted_at": main_msg.date.isoformat() if main_msg.date else datetime.utcnow().isoformat(),
+            }
+            
+            logger.info(f"Real-time: Album with {len(messages)} photos in @{channel_username}")
+            
+            post_id = await self._sync_realtime_post(channel_id, channel_username, channel_title, post_data)
+            await self._notify_realtime_post(channel_id, channel_username, channel_title, post_data, post_id)
+        
         @self._client.on(events.NewMessage(chats=None))
         async def handle_new_message(event):
             """Handle new messages from channels in real-time."""
@@ -387,7 +516,7 @@ class TelethonClientWrapper:
                 
                 chat = await event.get_chat()
                 
-                # Skip messages without text
+                # Skip messages without text and without media
                 if not message.text and not message.media:
                     return
                 
@@ -396,12 +525,28 @@ class TelethonClientWrapper:
                 channel_title = getattr(chat, 'title', 'Unknown')
                 channel_id = chat.id
                 
+                # Handle album (grouped messages)
+                if message.grouped_id:
+                    grouped_id = message.grouped_id
+                    if grouped_id not in pending_albums:
+                        pending_albums[grouped_id] = []
+                    pending_albums[grouped_id].append(message)
+                    
+                    # Start/restart timer for this album
+                    if grouped_id in album_timers:
+                        album_timers[grouped_id].cancel()
+                    album_timers[grouped_id] = asyncio.create_task(
+                        process_album(grouped_id, channel_id, channel_username, channel_title)
+                    )
+                    return
+                
                 logger.info(f"Real-time: New post in @{channel_username}")
                 
-                # Prepare post data
+                # Prepare post data for single message
+                text = get_message_markdown(message)
                 post_data = {
                     "telegram_message_id": message.id,
-                    "text": message.text or "",
+                    "text": text,
                     "media_type": self._get_media_type(message),
                     "media_file_id": str(message.id) if message.media else None,
                     "posted_at": message.date.isoformat() if message.date else datetime.utcnow().isoformat(),
