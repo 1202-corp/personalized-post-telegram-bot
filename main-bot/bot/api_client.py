@@ -125,7 +125,7 @@ class CoreAPIClient:
             return False
     
     async def get_user_language(self, telegram_id: int) -> str:
-        """Get user's preferred language. Defaults to 'en'."""
+        """Get user's preferred language. Defaults to 'en_US'."""
         try:
             response = await self.client.get(
                 f"{self.base_url}/api/v1/users/{telegram_id}/language"
