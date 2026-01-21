@@ -19,7 +19,7 @@ from bot.handlers import commands, training, feed
 # Configure logging
 setup_logging(
     log_level=os.getenv("LOG_LEVEL", "INFO"),
-    log_dir=os.getenv("LOG_DIR", "/var/log/ppb"),
+    log_dir=os.getenv("LOG_DIR", "/var/log/ppp"),
     log_file="main-bot.log",
 )
 logger = get_logger(__name__)
@@ -37,8 +37,8 @@ async def heartbeat_loop():
         redis_client = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/1"))
         while True:
             try:
-                await redis_client.set("ppb:main_bot:heartbeat", "alive", ex=60)
-                await redis_client.set("ppb:main_bot:last_seen", str(int(asyncio.get_event_loop().time())), ex=120)
+                await redis_client.set("ppp:main_bot:heartbeat", "alive", ex=60)
+                await redis_client.set("ppp:main_bot:last_seen", str(int(asyncio.get_event_loop().time())), ex=120)
             except Exception as e:
                 logger.warning(f"Heartbeat error: {e}")
             await asyncio.sleep(30)

@@ -160,7 +160,7 @@ async def notify_to_redis(
                 "media_file_id": post.get("media_file_id"),
                 "posted_at": post["posted_at"],
             }
-            await redis_client.publish("ppb:new_posts", json.dumps(event_data))
+            await redis_client.publish("ppp:new_posts", json.dumps(event_data))
         
         await redis_client.close()
         logger.info(f"Notified main-bot about {len(posts)} new posts from {channel_username}")
