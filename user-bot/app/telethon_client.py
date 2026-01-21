@@ -615,7 +615,8 @@ class TelethonClientWrapper:
                 "post_id": post_id,
             }
             
-            await redis_client.publish("ppb:new_posts", json.dumps(event_data))
+            await redis_client.publish("ppp:new_posts", json.dumps(event_data))
+            await redis_client.publish("ppp:new_posts", json.dumps(event_data))
             await redis_client.close()
             
             logger.info(f"Real-time: Notified main-bot about post from @{channel_username}")
