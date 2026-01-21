@@ -131,11 +131,11 @@ class CoreAPIClient:
                 f"{self.base_url}/api/v1/users/{telegram_id}/language"
             )
             if response.status_code == 200:
-                return response.json().get("language", "en")
-            return "en"
+                return response.json().get("language", "en_US")
+            return "en_US"
         except Exception as e:
             logger.error(f"Error getting user language: {e}")
-            return "en"
+            return "en_US"
     
     async def set_user_language(self, telegram_id: int, language: str) -> bool:
         """Set user's preferred language."""
@@ -147,36 +147,6 @@ class CoreAPIClient:
             return response.status_code in (200, 204)
         except Exception as e:
             logger.error(f"Error setting user language: {e}")
-            return False
-    
-    async def get_inactive_users(
-        self,
-        silence_threshold_seconds: int = 600
-    ) -> List[Dict[str, Any]]:
-        """
-        Get users who are trained but haven't been active recently.
-        Returns users eligible for nudge messages.
-        """
-        try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/users/inactive",
-                params={"silence_threshold": silence_threshold_seconds}
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error getting inactive users: {e}")
-            return []
-    
-    async def mark_nudge_sent(self, telegram_id: int) -> bool:
-        """Mark that a nudge was sent to user (to avoid spamming)."""
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/api/v1/users/{telegram_id}/nudge-sent"
-            )
-            return response.status_code in (200, 204)
-        except Exception as e:
-            logger.error(f"Error marking nudge sent: {e}")
             return False
     
     async def get_feed_users(self) -> List[Dict[str, Any]]:
@@ -302,7 +272,7 @@ class CoreAPIClient:
         telegram_id: int,
         limit: int = 1
     ) -> List[Dict[str, Any]]:
-        """Get best posts for retention."""
+        """Get best posts for user feed."""
         try:
             response = await self.client.post(
                 f"{self.base_url}/api/v1/posts/best",

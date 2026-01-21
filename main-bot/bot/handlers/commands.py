@@ -178,10 +178,10 @@ async def on_set_lang_en(callback: CallbackQuery, message_manager: MessageManage
     user_id = callback.from_user.id
     
     # Save language preference to database
-    await api.set_user_language(user_id, "en")
+    await api.set_user_language(user_id, "en_US")
     
     # Get texts in new language
-    texts = get_texts("en")
+    texts = get_texts("en_US")
     name = escape_md(callback.from_user.first_name or "there")
     
     await callback.answer("Language: English")
@@ -190,7 +190,7 @@ async def on_set_lang_en(callback: CallbackQuery, message_manager: MessageManage
     try:
         await callback.message.edit_text(
             texts.get("welcome", name=name),
-            reply_markup=get_start_keyboard("en")
+            reply_markup=get_start_keyboard("en_US")
         )
     except Exception:
         pass
@@ -203,10 +203,10 @@ async def on_set_lang_ru(callback: CallbackQuery, message_manager: MessageManage
     user_id = callback.from_user.id
     
     # Save language preference to database
-    await api.set_user_language(user_id, "ru")
+    await api.set_user_language(user_id, "ru_RU")
     
     # Get texts in new language
-    texts = get_texts("ru")
+    texts = get_texts("ru_RU")
     name = escape_md(callback.from_user.first_name or "there")
     
     await callback.answer("Язык: русский")
@@ -215,7 +215,7 @@ async def on_set_lang_ru(callback: CallbackQuery, message_manager: MessageManage
     try:
         await callback.message.edit_text(
             texts.get("welcome", name=name),
-            reply_markup=get_start_keyboard("ru")
+            reply_markup=get_start_keyboard("ru_RU")
         )
     except Exception:
         pass
@@ -251,15 +251,15 @@ async def on_settings_lang_en(callback: CallbackQuery, message_manager: MessageM
     api = get_core_api()
     user_id = callback.from_user.id
     
-    await api.set_user_language(user_id, "en")
-    texts = get_texts("en")
+    await api.set_user_language(user_id, "en_US")
+    texts = get_texts("en_US")
     
     await callback.answer("Language: English")
     
     try:
         await callback.message.edit_text(
             texts.get("settings_title"),
-            reply_markup=get_settings_keyboard("en")
+            reply_markup=get_settings_keyboard("en_US")
         )
     except Exception:
         pass
@@ -271,15 +271,15 @@ async def on_settings_lang_ru(callback: CallbackQuery, message_manager: MessageM
     api = get_core_api()
     user_id = callback.from_user.id
     
-    await api.set_user_language(user_id, "ru")
-    texts = get_texts("ru")
+    await api.set_user_language(user_id, "ru_RU")
+    texts = get_texts("ru_RU")
     
     await callback.answer("Язык: русский")
     
     try:
         await callback.message.edit_text(
             texts.get("settings_title"),
-            reply_markup=get_settings_keyboard("ru")
+            reply_markup=get_settings_keyboard("ru_RU")
         )
     except Exception:
         pass

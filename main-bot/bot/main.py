@@ -13,7 +13,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from bot.config import get_settings
 from bot.logging_config import setup_logging, get_logger
 from bot.message_manager import MessageManager
-from bot.retention import RetentionService
 from bot.api_client import close_clients
 from bot.handlers import commands, training, feed
 
@@ -65,9 +64,6 @@ async def main():
     # Initialize message manager
     message_manager = MessageManager(bot)
     
-    # Initialize retention service
-    retention_service = RetentionService(bot, message_manager)
-    
     # Register routers
     dp.include_router(commands.router)
     dp.include_router(training.router)
@@ -83,7 +79,6 @@ async def main():
     async def on_startup():
         global heartbeat_task
         logger.info("Bot starting up...")
-        await retention_service.start()
         # Start heartbeat
         heartbeat_task = asyncio.create_task(heartbeat_loop())
         # Set bot commands
@@ -107,7 +102,6 @@ async def main():
                 await heartbeat_task
             except asyncio.CancelledError:
                 pass
-        await retention_service.stop()
         await close_clients()
         await bot.session.close()
         logger.info("Bot shut down successfully!")
