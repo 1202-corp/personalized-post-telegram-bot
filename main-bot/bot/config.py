@@ -16,17 +16,13 @@ class Settings(BaseSettings):
     # Redis for state storage
     redis_url: str = "redis://redis:6379/1"
     
-    # Retention settings (seconds)
-    retention_check_interval: int = 300  # 5 minutes
-    retention_silence_threshold: int = 600  # 10 minutes
-    
     # Training settings
     default_training_channels: str = "@durov,@telegram"
     posts_per_channel: int = 7
     min_interactions_for_training: int = 5
     
-    # Localization
-    language: str = "en"
+    # Localization (using locale format: language_COUNTRY)
+    default_language: str = "en_US"
     
     class Config:
         env_file = ".env"

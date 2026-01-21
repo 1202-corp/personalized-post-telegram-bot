@@ -8,7 +8,6 @@
   "training_complete": "\ud83c\udf89 *Training Complete!*\n\nYou've rated *{rated_count}* posts. Your personalized feed is being prepared!\n\n\ud83c\udf81 *Bonus Unlocked:* You can now add 1 free bonus channel!\n",
   "bonus_channel": "\ud83c\udf81 *Claim Your Bonus Channel!*\n\nAs a thank you for completing training, you get to add one premium channel for free.\n\nThis channel will be included in your personalized feed with priority ranking.\n",
   "feed_ready": "\ud83d\udcf0 *Your Feed is Ready!*\n\nI've analyzed your preferences and prepared your personalized content. You'll see the most relevant posts here.\n\nUse the buttons below to manage your channels and settings.\n\n_The more you interact, the smarter I get!_\n",
-  "retention_nudge": "\ud83d\udc4b *Hey! Miss you!*\n\nI found a post you might love. Check it out!\n",
   "status": "\ud83d\udcca *Your Status*\n\n\u2022 Status: {status}\n\u2022 Training: {is_trained}\n\u2022 Bonus Channels: {bonus_channels}\n",
   "help": "\ud83c\udd98 *Help*\n\n*Commands:*\n\u2022 /start - Start or restart the bot\n\u2022 /status - Check your current status\n\u2022 /reset - Clean up messages\n\u2022 /help - Show this help\n\n*Need more help?*\nContact support: @your_support_bot\n",
   "error_generic": "\u274c Something went wrong. Please try again later.",

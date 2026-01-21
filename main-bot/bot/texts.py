@@ -10,9 +10,9 @@ from functools import lru_cache
 # Base path for language files
 LANGS_DIR = Path(__file__).parent / "langs"
 
-# Supported languages
-SUPPORTED_LANGUAGES = ["en", "ru"]
-DEFAULT_LANGUAGE = "en"
+# Supported languages (using locale format: language_COUNTRY)
+SUPPORTED_LANGUAGES = ["en_US", "ru_RU"]
+DEFAULT_LANGUAGE = "en_US"
 
 
 @lru_cache(maxsize=len(SUPPORTED_LANGUAGES))
@@ -32,7 +32,7 @@ class TextManager:
     Per-user text manager with language support.
     
     Usage:
-        texts = TextManager(lang="ru")
+        texts = TextManager(lang="ru_RU")
         message = texts.get("welcome", name="John")
     """
     

@@ -9,7 +9,7 @@ from bot.texts import TEXTS, get_texts
 settings = get_settings()
 
 
-def get_start_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_start_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Initial onboarding keyboard."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -22,7 +22,7 @@ def get_start_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_onboarding_keyboard(lang: str = "en", user_id: int = None, channels: list = None) -> InlineKeyboardMarkup:
+def get_onboarding_keyboard(lang: str = "en_US", user_id: int = None, channels: list = None) -> InlineKeyboardMarkup:
     """Onboarding step 2 keyboard - MiniApp as main action."""
     t = get_texts(lang)
     
@@ -44,7 +44,7 @@ def get_onboarding_keyboard(lang: str = "en", user_id: int = None, channels: lis
     ])
 
 
-def get_add_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_add_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Add channel step keyboard."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -53,7 +53,7 @@ def get_add_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_training_post_keyboard(post_id: int, lang: str = "en") -> InlineKeyboardMarkup:
+def get_training_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard for rating a training post."""
     t = get_texts(lang)
     buttons = [
@@ -66,7 +66,7 @@ def get_training_post_keyboard(post_id: int, lang: str = "en") -> InlineKeyboard
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_miniapp_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_miniapp_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard with MiniApp button."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -78,7 +78,7 @@ def get_miniapp_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_training_complete_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_training_complete_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard shown after training is complete."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -87,7 +87,7 @@ def get_training_complete_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_bonus_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_bonus_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard for adding bonus channel."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -96,7 +96,7 @@ def get_bonus_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_feed_keyboard(lang: str = "en", has_bonus_channel: bool = False) -> InlineKeyboardMarkup:
+def get_feed_keyboard(lang: str = "en_US", has_bonus_channel: bool = False) -> InlineKeyboardMarkup:
     """Main feed menu keyboard. Hides add channel button if user already has bonus channel."""
     t = get_texts(lang)
     buttons = []
@@ -106,7 +106,7 @@ def get_feed_keyboard(lang: str = "en", has_bonus_channel: bool = False) -> Inli
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_feed_post_keyboard(post_id: int, lang: str = "en") -> InlineKeyboardMarkup:
+def get_feed_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard for a feed post."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -117,7 +117,7 @@ def get_feed_post_keyboard(post_id: int, lang: str = "en") -> InlineKeyboardMark
     ])
 
 
-def get_settings_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_settings_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Settings menu keyboard."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -128,7 +128,7 @@ def get_settings_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_confirm_keyboard(action: str, lang: str = "en") -> InlineKeyboardMarkup:
+def get_confirm_keyboard(action: str, lang: str = "en_US") -> InlineKeyboardMarkup:
     """Generic confirmation keyboard."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -139,7 +139,7 @@ def get_confirm_keyboard(action: str, lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_cancel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_cancel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Cancel action keyboard."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -147,7 +147,7 @@ def get_cancel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_add_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_add_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard for add channel prompt with back button."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -155,7 +155,7 @@ def get_add_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_add_bonus_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_add_bonus_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard for add bonus channel prompt with back button to bonus offer."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -163,7 +163,7 @@ def get_add_bonus_channel_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_channels_view_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
+def get_channels_view_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Keyboard for viewing user's channels with back button."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -171,7 +171,7 @@ def get_channels_view_keyboard(lang: str = "en") -> InlineKeyboardMarkup:
     ])
 
 
-def get_retrain_keyboard(lang: str = "en", user_id: int = None, channels: list = None) -> InlineKeyboardMarkup:
+def get_retrain_keyboard(lang: str = "en_US", user_id: int = None, channels: list = None) -> InlineKeyboardMarkup:
     """Retrain keyboard with MiniApp and back to settings."""
     t = get_texts(lang)
     

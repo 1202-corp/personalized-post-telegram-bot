@@ -760,7 +760,7 @@ async def finish_training_flow(chat_id: int, message_manager: MessageManager, st
         _media_cache.pop(k, None)
 
     # Get user language
-    lang = await _get_user_lang(user_id) if user_id else "en"
+    lang = await _get_user_lang(user_id) if user_id else "en_US"
     texts = get_texts(lang)
 
     user_has_bonus = False

@@ -6,15 +6,14 @@ Telegram bot built with Aiogram 3.x implementing AARRR funnel for personalized p
 
 ## Overview
 
-The main bot handles user interactions, training flows, personalized feed delivery, and retention nudges. It uses a message registry pattern to manage different types of messages (system, ephemeral, onetime).
+The main bot handles user interactions, training flows, and personalized feed delivery. It uses a message registry pattern to manage different types of messages (system, ephemeral, onetime).
 
 ## Key Features
 
 - User onboarding and training flow
 - Personalized post feed based on ML recommendations
 - MiniApp integration for swipe interface
-- Retention service for inactive users
-- Multi-language support (en/ru)
+- Multi-language support (en_US/ru_RU)
 - Message management with registry pattern
 
 ## Technology Stack

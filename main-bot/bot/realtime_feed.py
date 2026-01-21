@@ -88,7 +88,7 @@ class RealtimeFeedService:
         self,
         user_id: int,
         post: dict,
-        lang: str = "en",
+        lang: str = "en_US",
     ):
         """Send a new post notification to a user."""
         try:
