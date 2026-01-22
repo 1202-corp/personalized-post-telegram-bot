@@ -8,7 +8,7 @@ from typing import Dict, Optional
 from functools import lru_cache
 
 # Base path for language files
-LANGS_DIR = Path(__file__).parent / "langs"
+LANGS_DIR = Path(__file__).parent.parent / "lang"
 
 # Supported languages (using locale format: language_COUNTRY)
 SUPPORTED_LANGUAGES = ["en_US", "ru_RU"]

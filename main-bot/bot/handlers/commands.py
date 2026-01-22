@@ -7,10 +7,11 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 
-from bot.message_manager import MessageManager
-from bot.api_client import get_core_api
-from bot.keyboards import get_start_keyboard, get_feed_keyboard, get_settings_keyboard
-from bot.texts import TEXTS, get_texts
+from bot.core import (
+    MessageManager, get_texts,
+    get_start_keyboard, get_feed_keyboard, get_settings_keyboard,
+)
+from bot.services import get_core_api
 from bot.utils import escape_md
 
 logger = logging.getLogger(__name__)
