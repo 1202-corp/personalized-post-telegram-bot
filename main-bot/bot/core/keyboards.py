@@ -3,8 +3,8 @@ Keyboard builders for inline buttons.
 """
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-from bot.config import get_settings
-from bot.texts import TEXTS, get_texts
+from bot.core.config import get_settings
+from bot.core.i18n import TEXTS, get_texts
 
 settings = get_settings()
 

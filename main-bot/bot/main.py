@@ -10,11 +10,12 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from bot.config import get_settings
-from bot.logging_config import setup_logging, get_logger
-from bot.message_manager import MessageManager
-from bot.api_client import close_clients
-from bot.handlers import commands, training, feed
+from bot.core import get_settings, setup_logging, get_logger, MessageManager
+from bot.core.middleware import MessageManagerMiddleware
+from bot.services import close_clients
+from bot.handlers import commands
+from bot.handlers.training import router as training_router
+from bot.handlers.feed import router as feed_router
 
 # Configure logging
 setup_logging(
@@ -66,14 +67,11 @@ async def main():
     
     # Register routers
     dp.include_router(commands.router)
-    dp.include_router(training.router)
-    dp.include_router(feed.router)
+    dp.include_router(training_router)
+    dp.include_router(feed_router)
     
     # Middleware to inject message_manager into handlers
-    @dp.update.outer_middleware()
-    async def inject_message_manager(handler, event, data):
-        data["message_manager"] = message_manager
-        return await handler(event, data)
+    dp.update.middleware(MessageManagerMiddleware(message_manager))
     
     # Startup event
     async def on_startup():
