@@ -283,3 +283,26 @@ async def on_settings_lang_ru(callback: CallbackQuery, message_manager: MessageM
         reply_markup=get_settings_keyboard("ru_RU"),
         tag="menu"
     )
+
+
+@router.message()
+async def handle_all_user_messages(message: Message, message_manager: MessageManager):
+    """
+    Catch-all handler for all user messages.
+    Deletes all user messages that are not handled by other handlers.
+    
+    Note: In aiogram, more specific handlers (with filters) are processed first.
+    This handler will only catch messages that:
+    - Are not commands (Command handlers process them first)
+    - Are not in FSM states (FSM handlers have higher priority)
+    - Are not web_app_data (handled by specific handler)
+    
+    All user messages are considered temporary and should be deleted.
+    """
+    # Skip if it's a command (already handled by command handlers)
+    if message.text and message.text.startswith("/"):
+        return
+    
+    # Delete user's message - all user messages are temporary
+    # This will be called for messages not handled by other handlers
+    await message_manager.delete_user_message(message)
