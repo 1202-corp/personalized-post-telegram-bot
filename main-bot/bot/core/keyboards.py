@@ -191,3 +191,11 @@ def get_retrain_keyboard(lang: str = "en_US", user_id: int = None, channels: lis
         [InlineKeyboardButton(text=t.get("retrain_btn_chat", default="💬 Оценивать в чате"), callback_data="confirm_retrain")],
         [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Назад"), callback_data="back_to_settings")],
     ])
+
+
+def get_how_it_works_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
+    """Keyboard for 'How it works' screen with back button."""
+    t = get_texts(lang)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t.get("onboarding_btn_back", default="⬅️ Назад"), callback_data="back_to_start")],
+    ])
