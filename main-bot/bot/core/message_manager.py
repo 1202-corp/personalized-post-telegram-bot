@@ -55,9 +55,9 @@ class MessageManager:
             self._is_start_command[chat_id] = True
         
         # Always delete all temporary messages first (including user messages)
+        logger.info(f"send_system: Deleting all temporary messages in chat {chat_id}")
         deleted_count = await self._delete_all_temporary(chat_id)
-        if deleted_count > 0:
-            logger.debug(f"Deleted {deleted_count} temporary messages (including user messages) before sending system message")
+        logger.info(f"send_system: Deleted {deleted_count} temporary messages (including user messages) before sending system message")
         
         existing = await self.registry.get_latest(chat_id, MessageType.SYSTEM, tag)
         
@@ -185,9 +185,9 @@ class MessageManager:
         Deletes all temporary messages before sending.
         """
         # Delete all temporary messages before sending regular (including user messages)
+        logger.info(f"send_regular: Deleting all temporary messages in chat {chat_id}")
         deleted_count = await self._delete_all_temporary(chat_id)
-        if deleted_count > 0:
-            logger.debug(f"Deleted {deleted_count} temporary messages (including user messages) before sending regular message")
+        logger.info(f"send_regular: Deleted {deleted_count} temporary messages (including user messages) before sending regular message")
         
         try:
             if photo_bytes:
@@ -266,11 +266,17 @@ class MessageManager:
                 deleted_count = 1
         else:
             messages = await self.registry.get_messages(chat_id, MessageType.EPHEMERAL, tag)
+            logger.info(f"Found {len(messages)} temporary messages to delete in chat {chat_id}")
             for msg in messages:
+                logger.info(f"Deleting temporary message {msg.message_id} (tag: {msg.tag})")
                 if await self._delete_message(chat_id, msg.message_id):
                     await self.registry.remove(chat_id, msg.message_id)
                     deleted_count += 1
+                else:
+                    logger.warning(f"Failed to delete temporary message {msg.message_id}")
         
+        if deleted_count > 0:
+            logger.info(f"Deleted {deleted_count} temporary messages from chat {chat_id}")
         return deleted_count
     
     async def delete_system(self, chat_id: int, tag: Optional[str] = None) -> int:
