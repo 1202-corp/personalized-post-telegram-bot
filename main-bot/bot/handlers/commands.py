@@ -11,6 +11,7 @@ from aiogram.filters import CommandStart, Command
 from bot.core import (
     MessageManager, get_texts,
     get_start_keyboard, get_feed_keyboard, get_settings_keyboard,
+    get_language_selection_keyboard,
 )
 from bot.services import get_core_api
 
@@ -226,60 +227,54 @@ async def on_cycle_language(callback: CallbackQuery, message_manager: MessageMan
 
 @router.callback_query(F.data == "change_language")
 async def on_change_language(callback: CallbackQuery, message_manager: MessageManager):
-    """Show language selection from settings."""
+    """Show language selection in temporary message."""
     await message_manager.send_toast(callback)
     
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    user_id = callback.from_user.id
+    lang = await _get_user_lang(user_id)
+    texts = get_texts(lang)
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🇬🇧 English", callback_data="settings_lang_en"),
-            InlineKeyboardButton(text="🇷🇺 Русский", callback_data="settings_lang_ru"),
-        ],
-        [InlineKeyboardButton(text="⬅️ Back", callback_data="settings")],
-    ])
-    
-    await message_manager.send_system(
+    # Send temporary message with language selection
+    await message_manager.send_temporary(
         callback.message.chat.id,
-        "🌐 Select language / Выберите язык:",
-        reply_markup=keyboard,
-        tag="menu"
+        texts.get("language_selection_title", default="🌐 Select language / Выберите язык:"),
+        reply_markup=get_language_selection_keyboard(lang),
+        tag="language_selection"
     )
 
 
-@router.callback_query(F.data == "settings_lang_en")
-async def on_settings_lang_en(callback: CallbackQuery, message_manager: MessageManager):
-    """Switch to English from settings."""
+@router.callback_query(F.data.startswith("select_language:"))
+async def on_select_language(callback: CallbackQuery, message_manager: MessageManager):
+    """Handle language selection from temporary message."""
     api = get_core_api()
     user_id = callback.from_user.id
     
-    await api.set_user_language(user_id, "en_US")
-    texts = get_texts("en_US")
+    # Extract language from callback data
+    selected_lang = callback.data.split(":")[1]
     
-    await message_manager.send_toast(callback, "Language: English")
+    # Save language preference
+    await api.set_user_language(user_id, selected_lang)
     
+    # Get texts in new language
+    texts = get_texts(selected_lang)
+    
+    # Show toast with language name
+    from bot.core.keyboards import get_language_flag
+    flag = get_language_flag(selected_lang)
+    lang_names = {
+        "en_US": "English",
+        "ru_RU": "Русский"
+    }
+    lang_name = lang_names.get(selected_lang, selected_lang)
+    await message_manager.send_toast(callback, f"{flag} {lang_name}")
+    
+    # Delete temporary language selection message
+    await message_manager.delete_temporary(callback.message.chat.id, tag="language_selection")
+    
+    # Update settings menu with new language
     await message_manager.send_system(
         callback.message.chat.id,
         texts.get("settings_title"),
-        reply_markup=get_settings_keyboard("en_US"),
-        tag="menu"
-    )
-
-
-@router.callback_query(F.data == "settings_lang_ru")
-async def on_settings_lang_ru(callback: CallbackQuery, message_manager: MessageManager):
-    """Switch to Russian from settings."""
-    api = get_core_api()
-    user_id = callback.from_user.id
-    
-    await api.set_user_language(user_id, "ru_RU")
-    texts = get_texts("ru_RU")
-    
-    await message_manager.send_toast(callback, "Язык: русский")
-    
-    await message_manager.send_system(
-        callback.message.chat.id,
-        texts.get("settings_title"),
-        reply_markup=get_settings_keyboard("ru_RU"),
+        reply_markup=get_settings_keyboard(selected_lang),
         tag="menu"
     )

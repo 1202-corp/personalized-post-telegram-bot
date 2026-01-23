@@ -35,6 +35,30 @@ def get_language_flag(lang: str) -> str:
     return LANGUAGE_FLAGS.get(lang, "🌐")
 
 
+def get_language_selection_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
+    """Language selection keyboard with languages in vertical list with flags."""
+    t = get_texts(lang)
+    supported = get_supported_languages()
+    
+    # Language names mapping
+    lang_names = {
+        "en_US": "English",
+        "ru_RU": "Русский"
+    }
+    
+    buttons = []
+    # Add each language as a separate button in vertical list
+    for supported_lang in supported:
+        flag = get_language_flag(supported_lang)
+        lang_name = lang_names.get(supported_lang, supported_lang)
+        buttons.append([InlineKeyboardButton(
+            text=f"{flag} {lang_name}",
+            callback_data=f"select_language:{supported_lang}"
+        )])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def get_start_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Initial onboarding keyboard."""
     t = get_texts(lang)
@@ -115,6 +139,7 @@ def get_training_complete_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t.get("training_complete_btn_claim_bonus", default="🎁 Claim Bonus Channel"), callback_data="claim_bonus")],
         [InlineKeyboardButton(text=t.get("training_complete_btn_view_feed", default="📰 View My Feed"), callback_data="view_feed")],
+        [InlineKeyboardButton(text=t.get("settings_btn_my_channels", default="📋 My Channels"), callback_data="my_channels")],
     ])
 
 
@@ -133,6 +158,7 @@ def get_feed_keyboard(lang: str = "en_US", has_bonus_channel: bool = False) -> I
     buttons = []
     if not has_bonus_channel:
         buttons.append([InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")])
+    buttons.append([InlineKeyboardButton(text=t.get("settings_btn_my_channels", default="📋 My Channels"), callback_data="my_channels")])
     buttons.append([InlineKeyboardButton(text=t.get("feed_btn_settings", default="⚙️ Settings"), callback_data="settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
