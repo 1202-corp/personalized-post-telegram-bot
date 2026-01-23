@@ -10,7 +10,7 @@ settings = get_settings()
 
 # Language flags mapping
 LANGUAGE_FLAGS = {
-    "en_US": "🇬🇧",
+    "en_US": "🇺🇸",
     "ru_RU": "🇷🇺",
 }
 
