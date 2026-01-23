@@ -227,7 +227,7 @@ class MessageManager:
     async def send_toast(
         self,
         callback_query: CallbackQuery,
-        text: str,
+        text: Optional[str] = None,
         show_alert: bool = False
     ) -> None:
         """
