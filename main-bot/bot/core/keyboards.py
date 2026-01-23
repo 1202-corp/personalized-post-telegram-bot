@@ -174,7 +174,6 @@ def get_settings_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Settings menu keyboard."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t.get("settings_btn_my_channels", default="📋 My Channels"), callback_data="my_channels")],
         [InlineKeyboardButton(text=t.get("settings_btn_retrain", default="🔄 Retrain"), callback_data="retrain")],
         [InlineKeyboardButton(text=t.get("settings_btn_language", default="🌐 Language"), callback_data="change_language")],
         [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")],
