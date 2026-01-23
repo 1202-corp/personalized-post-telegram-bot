@@ -59,7 +59,6 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
                     tag="user_message"
                 )
                 await self.message_manager.registry.register(managed)
-                logger.info(f"Marked user message {message.message_id} (chat {message.chat.id}) as temporary")
             except Exception as e:
                 logger.error(f"Could not mark user message {message.message_id} as temporary: {e}", exc_info=True)
         
