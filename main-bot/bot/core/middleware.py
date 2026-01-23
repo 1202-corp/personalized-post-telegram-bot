@@ -48,18 +48,18 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             logger.info(f"Event is Message: message_id={event.message_id}, from_user={event.from_user.id if event.from_user else None}, is_bot={event.from_user.is_bot if event.from_user else None}")
             if event.from_user and not event.from_user.is_bot:
-            try:
-                from bot.core.message_registry import ManagedMessage, MessageType
-                managed = ManagedMessage(
-                    message_id=event.message_id,
-                    chat_id=event.chat.id,
-                    message_type=MessageType.EPHEMERAL,
-                    tag="user_message"
-                )
-                await self.message_manager.registry.register(managed)
-                logger.info(f"Marked user message {event.message_id} (chat {event.chat.id}) as temporary")
-            except Exception as e:
-                logger.error(f"Could not mark user message {event.message_id} as temporary: {e}", exc_info=True)
+                try:
+                    from bot.core.message_registry import ManagedMessage, MessageType
+                    managed = ManagedMessage(
+                        message_id=event.message_id,
+                        chat_id=event.chat.id,
+                        message_type=MessageType.EPHEMERAL,
+                        tag="user_message"
+                    )
+                    await self.message_manager.registry.register(managed)
+                    logger.info(f"Marked user message {event.message_id} (chat {event.chat.id}) as temporary")
+                except Exception as e:
+                    logger.error(f"Could not mark user message {event.message_id} as temporary: {e}", exc_info=True)
         
         # Execute handler (if found)
         if handler:
