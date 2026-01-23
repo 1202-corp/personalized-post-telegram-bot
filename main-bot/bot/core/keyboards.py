@@ -40,17 +40,13 @@ def get_language_selection_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup
     t = get_texts(lang)
     supported = get_supported_languages()
     
-    # Language names mapping
-    lang_names = {
-        "en_US": "English",
-        "ru_RU": "Русский"
-    }
-    
     buttons = []
     # Add each language as a separate button in vertical list
     for supported_lang in supported:
         flag = get_language_flag(supported_lang)
-        lang_name = lang_names.get(supported_lang, supported_lang)
+        # Get language name from its own language file
+        lang_texts = get_texts(supported_lang)
+        lang_name = lang_texts.get(f"lang_name_{supported_lang}", supported_lang)
         buttons.append([InlineKeyboardButton(
             text=f"{flag} {lang_name}",
             callback_data=f"select_language:{supported_lang}"

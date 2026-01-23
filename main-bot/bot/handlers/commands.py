@@ -209,11 +209,9 @@ async def on_cycle_language(callback: CallbackQuery, message_manager: MessageMan
     
     # Show toast with language name
     next_flag = get_language_flag(next_lang)
-    lang_names = {
-        "en_US": "English",
-        "ru_RU": "Русский"
-    }
-    lang_name = lang_names.get(next_lang, next_lang)
+    # Get language name from its own language file
+    next_lang_texts = get_texts(next_lang)
+    lang_name = next_lang_texts.get(f"lang_name_{next_lang}", next_lang)
     await message_manager.send_toast(callback, f"{next_flag} {lang_name}")
     
     # Update system message
@@ -261,11 +259,9 @@ async def on_select_language(callback: CallbackQuery, message_manager: MessageMa
     # Show toast with language name
     from bot.core.keyboards import get_language_flag
     flag = get_language_flag(selected_lang)
-    lang_names = {
-        "en_US": "English",
-        "ru_RU": "Русский"
-    }
-    lang_name = lang_names.get(selected_lang, selected_lang)
+    # Get language name from its own language file
+    selected_lang_texts = get_texts(selected_lang)
+    lang_name = selected_lang_texts.get(f"lang_name_{selected_lang}", selected_lang)
     await message_manager.send_toast(callback, f"{flag} {lang_name}")
     
     # Delete temporary language selection message
