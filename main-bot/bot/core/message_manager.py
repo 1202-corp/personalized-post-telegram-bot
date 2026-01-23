@@ -340,6 +340,9 @@ class MessageManager:
         tag: str = "menu"
     ) -> bool:
         """Edit the existing system message with given tag."""
+        # Delete all temporary messages before editing (same as send_system)
+        await self._delete_all_temporary(chat_id)
+        
         existing = await self.registry.get_latest(chat_id, MessageType.SYSTEM, tag)
         if not existing:
             return False

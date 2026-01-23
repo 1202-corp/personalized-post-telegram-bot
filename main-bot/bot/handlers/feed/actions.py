@@ -90,13 +90,21 @@ async def on_add_bonus_channel(
     
     await state.set_state(FeedStates.adding_bonus_channel)
     
-    try:
-        await callback.message.edit_text(
+    # Use edit_system to ensure temporary messages are deleted
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        texts.get("add_bonus_channel_prompt"),
+        reply_markup=get_add_channel_keyboard(lang),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
+        await message_manager.send_system(
+            callback.message.chat.id,
             texts.get("add_bonus_channel_prompt"),
-            reply_markup=get_add_channel_keyboard(lang)
+            reply_markup=get_add_channel_keyboard(lang),
+            tag="menu"
         )
-    except Exception:
-        pass
 
 
 @router.message(FeedStates.adding_bonus_channel)
@@ -233,12 +241,15 @@ async def on_add_channel_feed(
     await state.set_state(FeedStates.adding_channel)
     await message_manager.delete_temporary(callback.message.chat.id, tag="bonus_nudge")
     
-    try:
-        await callback.message.edit_text(
-            texts.get("add_channel_prompt"),
-            reply_markup=get_add_channel_keyboard(lang)
-        )
-    except Exception:
+    # Use edit_system to ensure temporary messages are deleted
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        texts.get("add_channel_prompt"),
+        reply_markup=get_add_channel_keyboard(lang),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
         await message_manager.send_system(
             callback.message.chat.id,
             texts.get("add_channel_prompt"),
@@ -343,13 +354,21 @@ async def on_settings(
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    try:
-        await callback.message.edit_text(
+    # Use edit_system to ensure temporary messages are deleted
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        texts.get("settings_title"),
+        reply_markup=get_settings_keyboard(lang),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
+        await message_manager.send_system(
+            callback.message.chat.id,
             texts.get("settings_title"),
-            reply_markup=get_settings_keyboard(lang)
+            reply_markup=get_settings_keyboard(lang),
+            tag="menu"
         )
-    except Exception:
-        pass
 
 
 @router.callback_query(F.data == "my_channels")
@@ -375,13 +394,21 @@ async def on_my_channels(
             text += f"• @{username} - {title}\n"
     
     from bot.core import get_channels_view_keyboard
-    try:
-        await callback.message.edit_text(
+    # Use edit_system to ensure temporary messages are deleted
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        text,
+        reply_markup=get_channels_view_keyboard(lang),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
+        await message_manager.send_system(
+            callback.message.chat.id,
             text,
-            reply_markup=get_channels_view_keyboard(lang)
+            reply_markup=get_channels_view_keyboard(lang),
+            tag="menu"
         )
-    except Exception:
-        pass
 
 
 @router.callback_query(F.data == "back_to_settings")
@@ -394,13 +421,21 @@ async def on_back_to_settings(
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    try:
-        await callback.message.edit_text(
+    # Use edit_system to ensure temporary messages are deleted
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        texts.get("settings_title"),
+        reply_markup=get_settings_keyboard(lang),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
+        await message_manager.send_system(
+            callback.message.chat.id,
             texts.get("settings_title"),
-            reply_markup=get_settings_keyboard(lang)
+            reply_markup=get_settings_keyboard(lang),
+            tag="menu"
         )
-    except Exception:
-        pass
 
 
 @router.callback_query(F.data == "back_to_feed")
@@ -417,13 +452,21 @@ async def on_back_to_feed(
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    try:
-        await callback.message.edit_text(
+    # Use edit_system to ensure temporary messages are deleted
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        texts.get("feed_ready"),
+        reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
+        await message_manager.send_system(
+            callback.message.chat.id,
             texts.get("feed_ready"),
-            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus)
+            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+            tag="menu"
         )
-    except Exception:
-        pass
 
 
 @router.callback_query(F.data == "cancel")
@@ -448,49 +491,79 @@ async def on_cancel(
     
     if user_data and user_data.get("is_trained"):
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
-        try:
-            await callback.message.edit_text(
+        success = await message_manager.edit_system(
+            callback.message.chat.id,
+            texts.get("feed_ready"),
+            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+            tag="menu"
+        )
+        if not success:
+            await message_manager.send_system(
+                callback.message.chat.id,
                 texts.get("feed_ready"),
-                reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus)
+                reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+                tag="menu"
             )
-        except Exception:
-            pass
     elif current_state and "training" in str(current_state).lower():
         from bot.core.keyboards import get_onboarding_keyboard
-        try:
-            await callback.message.edit_text(
+        success = await message_manager.edit_system(
+            callback.message.chat.id,
+            texts.get("training_intro"),
+            reply_markup=get_onboarding_keyboard(lang),
+            tag="menu"
+        )
+        if not success:
+            await message_manager.send_system(
+                callback.message.chat.id,
                 texts.get("training_intro"),
-                reply_markup=get_onboarding_keyboard(lang)
+                reply_markup=get_onboarding_keyboard(lang),
+                tag="menu"
             )
-        except Exception:
-            pass
     elif current_state and "adding" in str(current_state).lower():
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
         if user_data and user_data.get("is_trained"):
-            try:
-                await callback.message.edit_text(
+            success = await message_manager.edit_system(
+                callback.message.chat.id,
+                texts.get("feed_ready"),
+                reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+                tag="menu"
+            )
+            if not success:
+                await message_manager.send_system(
+                    callback.message.chat.id,
                     texts.get("feed_ready"),
-                    reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus)
+                    reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+                    tag="menu"
                 )
-            except Exception:
-                pass
         else:
             from bot.core.keyboards import get_onboarding_keyboard
-            try:
-                await callback.message.edit_text(
+            success = await message_manager.edit_system(
+                callback.message.chat.id,
+                texts.get("training_intro"),
+                reply_markup=get_onboarding_keyboard(lang),
+                tag="menu"
+            )
+            if not success:
+                await message_manager.send_system(
+                    callback.message.chat.id,
                     texts.get("training_intro"),
-                    reply_markup=get_onboarding_keyboard(lang)
+                    reply_markup=get_onboarding_keyboard(lang),
+                    tag="menu"
                 )
-            except Exception:
-                pass
     else:
         from bot.core import get_start_keyboard
         name = html.escape(callback.from_user.first_name or "there")
-        try:
-            await callback.message.edit_text(
+        success = await message_manager.edit_system(
+            callback.message.chat.id,
+            texts.get("welcome", name=name),
+            reply_markup=get_start_keyboard(lang),
+            tag="menu"
+        )
+        if not success:
+            await message_manager.send_system(
+                callback.message.chat.id,
                 texts.get("welcome", name=name),
-                reply_markup=get_start_keyboard(lang)
+                reply_markup=get_start_keyboard(lang),
+                tag="menu"
             )
-        except Exception:
-            pass
 
