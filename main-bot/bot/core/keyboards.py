@@ -4,21 +4,52 @@ Keyboard builders for inline buttons.
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from bot.core.config import get_settings
-from bot.core.i18n import TEXTS, get_texts
+from bot.core.i18n import TEXTS, get_texts, get_supported_languages
 
 settings = get_settings()
+
+# Language flags mapping
+LANGUAGE_FLAGS = {
+    "en_US": "🇬🇧",
+    "ru_RU": "🇷🇺",
+}
+
+
+def get_next_language(current_lang: str) -> str:
+    """Get next language from SUPPORTED_LANGUAGES list (cyclically)."""
+    supported = get_supported_languages()
+    if not supported:
+        return current_lang
+    
+    try:
+        current_index = supported.index(current_lang)
+        next_index = (current_index + 1) % len(supported)
+        return supported[next_index]
+    except ValueError:
+        # Current language not in list, return first supported
+        return supported[0] if supported else current_lang
+
+
+def get_language_flag(lang: str) -> str:
+    """Get flag emoji for language."""
+    return LANGUAGE_FLAGS.get(lang, "🌐")
 
 
 def get_start_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Initial onboarding keyboard."""
     t = get_texts(lang)
+    next_lang = get_next_language(lang)
+    current_flag = get_language_flag(lang)
+    next_flag = get_language_flag(next_lang)
+    
+    # Get button text in current language and format with flags
+    change_lang_template = t.get("start_btn_change_language", default="{flag1} Change Language {flag2}")
+    change_lang_text = change_lang_template.format(flag1=current_flag, flag2=next_flag)
+    
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t.get("start_btn_start_training", default=TEXTS.get("start_btn_start_training", "🚀 Start Training")), callback_data="start_training")],
         [InlineKeyboardButton(text=t.get("start_btn_how_it_works", default=TEXTS.get("start_btn_how_it_works", "❓ How it works")), callback_data="how_it_works")],
-        [
-            InlineKeyboardButton(text="🇬🇧 EN", callback_data="set_lang_en"),
-            InlineKeyboardButton(text="🇷🇺 RU", callback_data="set_lang_ru"),
-        ],
+        [InlineKeyboardButton(text=change_lang_text, callback_data="cycle_language")],
     ])
 
 

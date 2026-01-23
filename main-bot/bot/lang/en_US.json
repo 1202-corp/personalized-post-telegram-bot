@@ -38,6 +38,7 @@
   "training_nudge_3": "👋 We were so close to a fully trained feed.\n\nIf it's still relevant, jump back into training for a bit — your future recommendations will thank you. If not, you can ignore this message.",
   "start_btn_start_training": "🚀 Start Training",
   "start_btn_how_it_works": "\u2139\ufe0f How it Works",
+  "start_btn_change_language": "{flag1} Change Language {flag2}",
   "start_btn_lang_en": "\ud83c\uddec\ud83c\udde7 English",
   "start_btn_lang_ru": "\ud83c\uddf7\ud83c\uddfa Russian",
   "onboarding_btn_train_feed": "\u2705 Train My Feed",
