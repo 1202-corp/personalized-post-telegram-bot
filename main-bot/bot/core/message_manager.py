@@ -285,12 +285,17 @@ class MessageManager:
         """
         Delete a user's message.
         Used to clean up user messages like /start, /help, etc.
+        Marks message as deleted to prevent middleware from deleting it again.
         """
         try:
             await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            # Mark as deleted to prevent middleware from deleting it again
+            message._deleted = True
             return True
         except TelegramBadRequest as e:
             if "message to delete not found" in str(e).lower():
+                # Mark as deleted even if already deleted
+                message._deleted = True
                 return True  # Already deleted
             logger.warning(f"Cannot delete user message {message.message_id}: {e}")
             return False
