@@ -3,7 +3,7 @@
 import logging
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, Message
+from aiogram.types import TelegramObject, Message, Update
 
 from bot.core.message_manager import MessageManager
 
@@ -40,26 +40,28 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
         data: Dict[str, Any]
     ) -> Any:
         """Mark user message as temporary (ephemeral) before and after handler execution."""
-        # Log all events to debug
-        logger.info(f"AutoDeleteUserMessagesMiddleware called: event type={type(event).__name__}")
+        # Extract Message from Update if event is Update
+        message = None
+        if isinstance(event, Update):
+            message = event.message
+        elif isinstance(event, Message):
+            message = event
         
         # Mark user message as temporary BEFORE handler execution
         # This ensures messages are marked even if handler is not found
-        if isinstance(event, Message):
-            logger.info(f"Event is Message: message_id={event.message_id}, from_user={event.from_user.id if event.from_user else None}, is_bot={event.from_user.is_bot if event.from_user else None}")
-            if event.from_user and not event.from_user.is_bot:
-                try:
-                    from bot.core.message_registry import ManagedMessage, MessageType
-                    managed = ManagedMessage(
-                        message_id=event.message_id,
-                        chat_id=event.chat.id,
-                        message_type=MessageType.EPHEMERAL,
-                        tag="user_message"
-                    )
-                    await self.message_manager.registry.register(managed)
-                    logger.info(f"Marked user message {event.message_id} (chat {event.chat.id}) as temporary")
-                except Exception as e:
-                    logger.error(f"Could not mark user message {event.message_id} as temporary: {e}", exc_info=True)
+        if message and message.from_user and not message.from_user.is_bot:
+            try:
+                from bot.core.message_registry import ManagedMessage, MessageType
+                managed = ManagedMessage(
+                    message_id=message.message_id,
+                    chat_id=message.chat.id,
+                    message_type=MessageType.EPHEMERAL,
+                    tag="user_message"
+                )
+                await self.message_manager.registry.register(managed)
+                logger.info(f"Marked user message {message.message_id} (chat {message.chat.id}) as temporary")
+            except Exception as e:
+                logger.error(f"Could not mark user message {message.message_id} as temporary: {e}", exc_info=True)
         
         # Execute handler (if found)
         if handler:
