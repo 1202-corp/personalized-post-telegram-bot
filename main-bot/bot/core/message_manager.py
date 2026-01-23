@@ -54,8 +54,10 @@ class MessageManager:
         if is_start:
             self._is_start_command[chat_id] = True
         
-        # Always delete all temporary messages first
-        await self._delete_all_temporary(chat_id)
+        # Always delete all temporary messages first (including user messages)
+        deleted_count = await self._delete_all_temporary(chat_id)
+        if deleted_count > 0:
+            logger.debug(f"Deleted {deleted_count} temporary messages (including user messages) before sending system message")
         
         existing = await self.registry.get_latest(chat_id, MessageType.SYSTEM, tag)
         
@@ -182,8 +184,10 @@ class MessageManager:
         These messages are tracked but never auto-deleted.
         Deletes all temporary messages before sending.
         """
-        # Delete all temporary messages before sending regular
-        await self._delete_all_temporary(chat_id)
+        # Delete all temporary messages before sending regular (including user messages)
+        deleted_count = await self._delete_all_temporary(chat_id)
+        if deleted_count > 0:
+            logger.debug(f"Deleted {deleted_count} temporary messages (including user messages) before sending regular message")
         
         try:
             if photo_bytes:
