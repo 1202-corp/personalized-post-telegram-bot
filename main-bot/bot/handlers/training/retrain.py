@@ -124,7 +124,7 @@ async def on_confirm_bonus_training(
     state: FSMContext,
 ):
     """Start bonus training in chat mode."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     username = callback.data.split(":", 1)[1]
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
@@ -174,7 +174,7 @@ async def on_confirm_retrain(
     state: FSMContext,
 ):
     """Start retraining in chat mode."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
     api = get_core_api()
@@ -199,7 +199,7 @@ async def on_confirm_retrain(
 
     if not posts:
         await state.clear()
-        await message_manager.send_ephemeral(
+        await message_manager.send_temporary(
             chat_id,
             texts.get("no_posts_training"),
             auto_delete_after=5.0,

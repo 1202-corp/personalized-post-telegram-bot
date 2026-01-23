@@ -15,7 +15,7 @@ class MessageType(Enum):
     """Types of messages managed by MessageManager."""
     SYSTEM = "system"      # Persistent menu, edited in place
     EPHEMERAL = "ephemeral"  # Temporary, deleted after interaction
-    ONETIME = "onetime"    # Feed posts, kept forever
+    REGULAR = "regular"    # Regular messages (posts), kept forever
 
 
 @dataclass

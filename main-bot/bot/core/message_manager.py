@@ -6,10 +6,11 @@ Implements Registry pattern for tracking and managing message lifecycle.
 
 import asyncio
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from aiogram import Bot
-from aiogram.types import Message, InlineKeyboardMarkup, BufferedInputFile, LinkPreviewOptions
+from aiogram.types import Message, InlineKeyboardMarkup, BufferedInputFile, LinkPreviewOptions, CallbackQuery
+from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 
 from bot.core.message_registry import MessageRegistry, MessageType, ManagedMessage
@@ -26,6 +27,7 @@ class MessageManager:
     def __init__(self, bot: Bot):
         self.bot = bot
         self.registry = MessageRegistry()
+        self._is_start_command: Dict[int, bool] = {}  # Track if /start was called
     
     # ============== Core Send Methods ==============
     
@@ -36,69 +38,84 @@ class MessageManager:
         reply_markup: Optional[InlineKeyboardMarkup] = None,
         tag: str = "menu",
         photo: Optional[str] = None,
-        replace_existing: bool = True
+        photo_bytes: Optional[bytes] = None,
+        photo_filename: str = "photo.jpg",
+        is_start: bool = False
     ) -> Optional[Message]:
         """
         Send a SYSTEM message (persistent menu).
-        If replace_existing=True, edits the existing system message with same tag.
-        Otherwise, deletes old and sends new.
+        
+        Logic:
+        - Always deletes ALL temporary messages before sending/editing
+        - Checks if should recreate (send new then delete old) or edit existing
+        - When recreating: sends NEW first, then deletes OLD
         """
+        # Mark if this is a /start command
+        if is_start:
+            self._is_start_command[chat_id] = True
+        
+        # Always delete all temporary messages first
+        await self._delete_all_temporary(chat_id)
+        
         existing = await self.registry.get_latest(chat_id, MessageType.SYSTEM, tag)
         
-        if existing and replace_existing:
-            # Try to edit existing message
-            try:
-                if photo:
-                    # Can't change photo to text easily, delete and resend
+        # Check if we should recreate instead of edit
+        should_recreate = await self._should_recreate_system(
+            chat_id, existing, photo, photo_bytes, is_start
+        )
+        
+        if should_recreate:
+            # RECREATE: Send new first, then delete old
+            new_message = await self._send_new_system(
+                chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
+            )
+            
+            # Delete old system message if exists
+            if existing:
+                await self._delete_message(chat_id, existing.message_id)
+                await self.registry.remove(chat_id, existing.message_id)
+            
+            return new_message
+        else:
+            # EDIT: Try to edit existing
+            if existing:
+                try:
+                    if photo or photo_bytes:
+                        # Can't edit photo, need to recreate
+                        new_message = await self._send_new_system(
+                            chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
+                        )
+                        await self._delete_message(chat_id, existing.message_id)
+                        await self.registry.remove(chat_id, existing.message_id)
+                        return new_message
+                    else:
+                        # Edit text message
+                        await self.bot.edit_message_text(
+                            text=text,
+                            chat_id=chat_id,
+                            message_id=existing.message_id,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML
+                        )
+                        return None  # Edited in place
+                except TelegramBadRequest as e:
+                    if "message is not modified" in str(e).lower():
+                        return None  # Same content, no change needed
+                    # Error editing, recreate
+                    logger.warning(f"Failed to edit system message, recreating: {e}")
+                    new_message = await self._send_new_system(
+                        chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
+                    )
                     await self._delete_message(chat_id, existing.message_id)
                     await self.registry.remove(chat_id, existing.message_id)
-                else:
-                    await self.bot.edit_message_text(
-                        text=text,
-                        chat_id=chat_id,
-                        message_id=existing.message_id,
-                        reply_markup=reply_markup
-                    )
-                    return None  # Edited in place
-            except TelegramBadRequest as e:
-                if "message is not modified" in str(e):
-                    return None  # Same content, no change needed
-                # Message deleted or other error, send new
-                await self.registry.remove(chat_id, existing.message_id)
-        elif existing:
-            # Delete existing before sending new
-            await self._delete_message(chat_id, existing.message_id)
-            await self.registry.remove(chat_id, existing.message_id)
-        
-        # Send new message
-        try:
-            if photo:
-                message = await self.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=photo,
-                    caption=text,
-                    reply_markup=reply_markup,
-                )
+                    return new_message
             else:
-                message = await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    reply_markup=reply_markup,
+                # No existing, just send new
+                return await self._send_new_system(
+                    chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
                 )
-            
-            managed = ManagedMessage(
-                message_id=message.message_id,
-                chat_id=chat_id,
-                message_type=MessageType.SYSTEM,
-                tag=tag
-            )
-            await self.registry.register(managed)
-            return message
-        except Exception as e:
-            logger.error(f"Failed to send system message: {e}")
-            return None
     
-    async def send_ephemeral(
+    async def send_temporary(
         self,
         chat_id: int,
         text: str,
@@ -110,8 +127,8 @@ class MessageManager:
         disable_link_preview: bool = False,
     ) -> Optional[Message]:
         """
-        Send an EPHEMERAL message (temporary, deleted after interaction).
-        If auto_delete_after is set, message is deleted after that many seconds.
+        Send a TEMPORARY message.
+        These messages are deleted when system or regular messages are sent.
         """
         try:
             if photo_bytes:
@@ -121,12 +138,14 @@ class MessageManager:
                     photo=input_file,
                     caption=text,
                     reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
                 )
             else:
                 message = await self.bot.send_message(
                     chat_id=chat_id,
                     text=text,
                     reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML,
                     link_preview_options=LinkPreviewOptions(is_disabled=True) if disable_link_preview else None,
                 )
             
@@ -145,10 +164,10 @@ class MessageManager:
             
             return message
         except Exception as e:
-            logger.error(f"Failed to send ephemeral message: {e}")
+            logger.error(f"Failed to send temporary message: {e}")
             return None
     
-    async def send_onetime(
+    async def send_regular(
         self,
         chat_id: int,
         text: str,
@@ -159,9 +178,13 @@ class MessageManager:
         photo_filename: str = "photo.jpg",
     ) -> Optional[Message]:
         """
-        Send a ONETIME message (feed post, kept in history).
+        Send a REGULAR message (posts, kept forever).
         These messages are tracked but never auto-deleted.
+        Deletes all temporary messages before sending.
         """
+        # Delete all temporary messages before sending regular
+        await self._delete_all_temporary(chat_id)
+        
         try:
             if photo_bytes:
                 input_file = BufferedInputFile(photo_bytes, filename=photo_filename)
@@ -170,6 +193,7 @@ class MessageManager:
                     photo=input_file,
                     caption=text,
                     reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
                 )
             elif photo:
                 message = await self.bot.send_photo(
@@ -177,40 +201,57 @@ class MessageManager:
                     photo=photo,
                     caption=text,
                     reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
                 )
             else:
                 message = await self.bot.send_message(
                     chat_id=chat_id,
                     text=text,
                     reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML,
                     link_preview_options=LinkPreviewOptions(is_disabled=True),
                 )
             
             managed = ManagedMessage(
                 message_id=message.message_id,
                 chat_id=chat_id,
-                message_type=MessageType.ONETIME,
+                message_type=MessageType.REGULAR,
                 tag=tag
             )
             await self.registry.register(managed)
             return message
         except Exception as e:
-            logger.error(f"Failed to send onetime message: {e}")
+            logger.error(f"Failed to send regular message: {e}")
             return None
+    
+    async def send_toast(
+        self,
+        callback_query: CallbackQuery,
+        text: str,
+        show_alert: bool = False
+    ) -> None:
+        """
+        Send a toast notification (popup).
+        This doesn't create a message in chat, only shows a popup notification.
+        """
+        try:
+            await callback_query.answer(text=text, show_alert=show_alert)
+        except Exception as e:
+            logger.error(f"Error sending toast: {e}")
     
     # ============== Deletion Methods ==============
     
-    async def delete_ephemeral(
+    async def delete_temporary(
         self,
         chat_id: int,
         message_id: Optional[int] = None,
         tag: Optional[str] = None
     ) -> int:
         """
-        Delete ephemeral message(s).
+        Delete temporary message(s).
         If message_id is provided, delete that specific message.
-        If tag is provided, delete all ephemeral messages with that tag.
-        Otherwise, delete all ephemeral messages for the chat.
+        If tag is provided, delete all temporary messages with that tag.
+        Otherwise, delete all temporary messages for the chat.
         Returns count of deleted messages.
         """
         deleted_count = 0
@@ -240,31 +281,47 @@ class MessageManager:
         
         return deleted_count
     
+    async def delete_user_message(self, message: Message) -> bool:
+        """
+        Delete a user's message.
+        Used to clean up user messages like /start, /help, etc.
+        """
+        try:
+            await self.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+            return True
+        except TelegramBadRequest as e:
+            if "message to delete not found" in str(e).lower():
+                return True  # Already deleted
+            logger.warning(f"Cannot delete user message {message.message_id}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error deleting user message {message.message_id}: {e}")
+            return False
+    
     async def cleanup_chat(
         self,
         chat_id: int,
         include_system: bool = False,
-        include_onetime: bool = False
+        include_regular: bool = False
     ) -> Dict[str, int]:
         """
         Clean up messages for a chat.
-        By default, only deletes ephemeral messages.
+        By default, only deletes temporary messages.
         """
-        result = {"ephemeral": 0, "system": 0, "onetime": 0}
+        result = {"temporary": 0, "system": 0, "regular": 0}
         
-        # Always clean ephemeral
-        result["ephemeral"] = await self.delete_ephemeral(chat_id)
+        # Always clean temporary
+        result["temporary"] = await self.delete_temporary(chat_id)
         
         if include_system:
             result["system"] = await self.delete_system(chat_id)
         
-        # OneTime messages are NOT deleted by design
-        if include_onetime:
-            messages = await self.registry.get_messages(chat_id, MessageType.ONETIME)
+        if include_regular:
+            messages = await self.registry.get_messages(chat_id, MessageType.REGULAR)
             for msg in messages:
                 if await self._delete_message(chat_id, msg.message_id):
                     await self.registry.remove(chat_id, msg.message_id)
-                    result["onetime"] += 1
+                    result["regular"] += 1
         
         return result
     
@@ -287,11 +344,12 @@ class MessageManager:
                 text=text,
                 chat_id=chat_id,
                 message_id=existing.message_id,
-                reply_markup=reply_markup
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
             )
             return True
         except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
+            if "message is not modified" in str(e).lower():
                 return True  # Same content, considered success
             logger.error(f"Failed to edit system message: {e}")
             return False
@@ -311,12 +369,113 @@ class MessageManager:
             )
             return True
         except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
+            if "message is not modified" in str(e).lower():
                 return True
             logger.error(f"Failed to edit reply markup: {e}")
             return False
     
     # ============== Helper Methods ==============
+    
+    async def _should_recreate_system(
+        self,
+        chat_id: int,
+        existing: Optional[ManagedMessage],
+        photo: Optional[str],
+        photo_bytes: Optional[bytes],
+        is_start: bool
+    ) -> bool:
+        """
+        Check if system message should be recreated instead of edited.
+        
+        Conditions for recreation:
+        1. /start command was called (always recreate)
+        2. System message not found or deleted
+        3. Need to add/remove photo (current state is opposite)
+        4. After system message there are regular messages
+        5. Error occurred when trying to edit
+        """
+        # Always recreate on /start
+        if is_start or self._is_start_command.get(chat_id, False):
+            self._is_start_command.pop(chat_id, None)  # Clear flag
+            return True
+        
+        # No existing message, need to create
+        if not existing:
+            return True
+        
+        # Check if message still exists (try to get it)
+        try:
+            await self.bot.get_chat(chat_id)
+        except Exception:
+            return True  # Chat not accessible, recreate
+        
+        # Check if need to change photo state
+        has_photo = photo is not None or photo_bytes is not None
+        # We can't easily check if existing has photo, so we'll try edit first
+        # This will be handled in send_system logic
+        
+        # Check if there are regular messages after system
+        regular_messages = await self.registry.get_messages(chat_id, MessageType.REGULAR)
+        if regular_messages:
+            # Check if any regular message was created after system
+            for reg_msg in regular_messages:
+                if reg_msg.created_at > existing.created_at:
+                    return True  # Regular message after system, need to recreate
+        
+        return False
+    
+    async def _delete_all_temporary(self, chat_id: int) -> int:
+        """Delete all temporary messages for a chat."""
+        return await self.delete_temporary(chat_id)
+    
+    async def _send_new_system(
+        self,
+        chat_id: int,
+        text: str,
+        reply_markup: Optional[InlineKeyboardMarkup],
+        tag: str,
+        photo: Optional[str],
+        photo_bytes: Optional[bytes],
+        photo_filename: str
+    ) -> Optional[Message]:
+        """Internal method to send a new system message."""
+        try:
+            if photo_bytes:
+                input_file = BufferedInputFile(photo_bytes, filename=photo_filename)
+                message = await self.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=input_file,
+                    caption=text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            elif photo:
+                message = await self.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo,
+                    caption=text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                message = await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
+            
+            managed = ManagedMessage(
+                message_id=message.message_id,
+                chat_id=chat_id,
+                message_type=MessageType.SYSTEM,
+                tag=tag
+            )
+            await self.registry.register(managed)
+            return message
+        except Exception as e:
+            logger.error(f"Failed to send new system message: {e}")
+            return None
     
     async def _delete_message(self, chat_id: int, message_id: int) -> bool:
         """Safely delete a message, handling errors gracefully."""
@@ -324,9 +483,9 @@ class MessageManager:
             await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
             return True
         except TelegramBadRequest as e:
-            if "message to delete not found" in str(e):
+            if "message to delete not found" in str(e).lower():
                 return True  # Already deleted
-            if "message can't be deleted" in str(e):
+            if "message can't be deleted" in str(e).lower():
                 logger.warning(f"Cannot delete message {message_id}: {e}")
                 return False
             logger.error(f"Error deleting message {message_id}: {e}")
@@ -341,22 +500,34 @@ class MessageManager:
         await self._delete_message(chat_id, message_id)
         await self.registry.remove(chat_id, message_id)
     
-    # ============== Utility Methods ==============
+    # ============== Utility Methods (for backward compatibility) ==============
+    
+    async def send_ephemeral(self, *args, **kwargs) -> Optional[Message]:
+        """Backward compatibility: alias for send_temporary."""
+        return await self.send_temporary(*args, **kwargs)
+    
+    async def send_onetime(self, *args, **kwargs) -> Optional[Message]:
+        """Backward compatibility: alias for send_regular."""
+        return await self.send_regular(*args, **kwargs)
+    
+    async def delete_ephemeral(self, *args, **kwargs) -> int:
+        """Backward compatibility: alias for delete_temporary."""
+        return await self.delete_temporary(*args, **kwargs)
     
     async def answer_callback_and_delete(
         self,
-        callback_query,
+        callback_query: CallbackQuery,
         text: Optional[str] = None,
         show_alert: bool = False
     ) -> None:
-        """Answer callback query and delete the ephemeral message."""
+        """Answer callback query and delete the temporary message."""
         try:
             await callback_query.answer(text=text, show_alert=show_alert)
         except Exception as e:
             logger.error(f"Error answering callback: {e}")
         
         # Delete the message that had the callback button
-        await self.delete_ephemeral(
+        await self.delete_temporary(
             callback_query.message.chat.id,
             callback_query.message.message_id
         )
@@ -371,9 +542,9 @@ class MessageManager:
     ) -> Optional[Message]:
         """
         Transition to a system message state.
-        Cleans up ephemeral messages and sends/updates system message.
+        Cleans up temporary messages and sends/updates system message.
         """
         if cleanup_ephemeral:
-            await self.delete_ephemeral(chat_id)
+            await self._delete_all_temporary(chat_id)
         
         return await self.send_system(chat_id, text, reply_markup, tag)
