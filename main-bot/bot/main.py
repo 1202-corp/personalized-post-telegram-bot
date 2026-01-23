@@ -72,8 +72,8 @@ async def main():
     
     # Middleware to inject message_manager into handlers
     dp.update.middleware(MessageManagerMiddleware(message_manager))
-    # Middleware to automatically delete all user messages
-    dp.message.middleware(AutoDeleteUserMessagesMiddleware(message_manager))
+    # Middleware to automatically delete all user messages (registered on update level to catch all messages)
+    dp.update.middleware(AutoDeleteUserMessagesMiddleware(message_manager))
     
     # Startup event
     async def on_startup():
