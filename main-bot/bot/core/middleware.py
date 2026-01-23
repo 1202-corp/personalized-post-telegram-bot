@@ -39,14 +39,10 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        """Mark user message as temporary (ephemeral) after handler execution."""
-        # Execute handler first
-        result = await handler(event, data)
-        
-        # Check if this is a user message (not from bot)
+        """Mark user message as temporary (ephemeral) before and after handler execution."""
+        # Mark user message as temporary BEFORE handler execution
+        # This ensures messages are marked even if handler is not found
         if isinstance(event, Message) and event.from_user and not event.from_user.is_bot:
-            # Mark user message as temporary (ephemeral) in registry
-            # It will be deleted when bot sends system or regular message
             try:
                 from bot.core.message_registry import ManagedMessage, MessageType
                 managed = ManagedMessage(
@@ -59,6 +55,12 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
                 logger.debug(f"Marked user message {event.message_id} as temporary")
             except Exception as e:
                 logger.debug(f"Could not mark user message {event.message_id} as temporary: {e}")
+        
+        # Execute handler (if found)
+        if handler:
+            result = await handler(event, data)
+        else:
+            result = None
         
         return result
 
