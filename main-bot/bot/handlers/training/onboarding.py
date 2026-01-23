@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from bot.core import (
     MessageManager, get_texts, get_settings,
     get_start_keyboard, get_onboarding_keyboard, get_add_channel_keyboard,
-    get_bonus_channel_keyboard,
+    get_bonus_channel_keyboard, get_how_it_works_keyboard,
 )
 from bot.core.states import TrainingStates
 from bot.services import get_core_api, get_user_bot
@@ -129,10 +129,11 @@ async def on_how_it_works(
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    await message_manager.send_temporary(
+    await message_manager.send_system(
         callback.message.chat.id,
         texts.get("how_it_works"),
-        auto_delete_after=20.0
+        reply_markup=get_how_it_works_keyboard(lang),
+        tag="menu"
     )
 
 
