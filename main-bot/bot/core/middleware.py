@@ -49,7 +49,7 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
             if not getattr(event, '_deleted', False):
                 # Delete user message
                 try:
-                    await self.message_manager.delete_user_message(event, mark_deleted=False)
+                    await self.message_manager.delete_user_message(event)
                 except Exception as e:
                     logger.debug(f"Could not delete user message {event.message_id}: {e}")
         
