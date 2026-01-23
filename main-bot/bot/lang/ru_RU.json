@@ -65,6 +65,8 @@
   "settings_btn_language": "🌐 Язык",
   "settings_btn_back": "◀️ Назад",
   "language_selection_title": "🌐 <b>Выберите язык</b>\n\nВыберите предпочитаемый язык:",
+  "lang_name_en_US": "English",
+  "lang_name_ru_RU": "Русский",
   "confirm_btn_yes": "✅ Да",
   "confirm_btn_no": "❌ Нет",
   "cancel_btn_cancel": "❌ Отмена",
