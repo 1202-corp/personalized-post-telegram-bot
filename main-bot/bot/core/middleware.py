@@ -40,9 +40,14 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
         data: Dict[str, Any]
     ) -> Any:
         """Mark user message as temporary (ephemeral) before and after handler execution."""
+        # Log all events to debug
+        logger.info(f"AutoDeleteUserMessagesMiddleware called: event type={type(event).__name__}")
+        
         # Mark user message as temporary BEFORE handler execution
         # This ensures messages are marked even if handler is not found
-        if isinstance(event, Message) and event.from_user and not event.from_user.is_bot:
+        if isinstance(event, Message):
+            logger.info(f"Event is Message: message_id={event.message_id}, from_user={event.from_user.id if event.from_user else None}, is_bot={event.from_user.is_bot if event.from_user else None}")
+            if event.from_user and not event.from_user.is_bot:
             try:
                 from bot.core.message_registry import ManagedMessage, MessageType
                 managed = ManagedMessage(
