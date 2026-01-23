@@ -185,50 +185,41 @@ async def cmd_reset(message: Message, message_manager: MessageManager):
     )
 
 
-@router.callback_query(F.data == "set_lang_en")
-async def on_set_lang_en(callback: CallbackQuery, message_manager: MessageManager):
-    """Switch bot language to English and show updated start menu."""
+@router.callback_query(F.data == "cycle_language")
+async def on_cycle_language(callback: CallbackQuery, message_manager: MessageManager):
+    """Cycle to next language from SUPPORTED_LANGUAGES."""
+    from bot.core.keyboards import get_next_language, get_language_flag
+    
     api = get_core_api()
     user_id = callback.from_user.id
     
+    # Get current language
+    current_lang = await _get_user_lang(user_id)
+    
+    # Get next language cyclically
+    next_lang = get_next_language(current_lang)
+    
     # Save language preference to database
-    await api.set_user_language(user_id, "en_US")
+    await api.set_user_language(user_id, next_lang)
     
     # Get texts in new language
-    texts = get_texts("en_US")
+    texts = get_texts(next_lang)
     name = html.escape(callback.from_user.first_name or "there")
     
-    await message_manager.send_toast(callback, "Language: English")
+    # Show toast with language name
+    next_flag = get_language_flag(next_lang)
+    lang_names = {
+        "en_US": "English",
+        "ru_RU": "Русский"
+    }
+    lang_name = lang_names.get(next_lang, next_lang)
+    await message_manager.send_toast(callback, f"{next_flag} {lang_name}")
     
     # Update system message
     await message_manager.send_system(
         callback.message.chat.id,
         texts.get("welcome", name=name),
-        reply_markup=get_start_keyboard("en_US"),
-        tag="menu"
-    )
-
-
-@router.callback_query(F.data == "set_lang_ru")
-async def on_set_lang_ru(callback: CallbackQuery, message_manager: MessageManager):
-    """Switch bot language to Russian and show updated start menu."""
-    api = get_core_api()
-    user_id = callback.from_user.id
-    
-    # Save language preference to database
-    await api.set_user_language(user_id, "ru_RU")
-    
-    # Get texts in new language
-    texts = get_texts("ru_RU")
-    name = html.escape(callback.from_user.first_name or "there")
-    
-    await message_manager.send_toast(callback, "Язык: русский")
-    
-    # Update system message
-    await message_manager.send_system(
-        callback.message.chat.id,
-        texts.get("welcome", name=name),
-        reply_markup=get_start_keyboard("ru_RU"),
+        reply_markup=get_start_keyboard(next_lang),
         tag="menu"
     )
 
