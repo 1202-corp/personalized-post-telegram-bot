@@ -28,7 +28,7 @@ class MessageManagerMiddleware(BaseMiddleware):
 
 
 class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
-    """Middleware to automatically delete all user messages after processing."""
+    """Middleware to mark all user messages as temporary (ephemeral)."""
     
     def __init__(self, message_manager: MessageManager):
         self.message_manager = message_manager
@@ -39,19 +39,26 @@ class AutoDeleteUserMessagesMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any]
     ) -> Any:
-        """Delete user message after handler execution if it's a user message."""
+        """Mark user message as temporary (ephemeral) after handler execution."""
         # Execute handler first
         result = await handler(event, data)
         
         # Check if this is a user message (not from bot)
         if isinstance(event, Message) and event.from_user and not event.from_user.is_bot:
-            # Check if message was already deleted (marked on message object)
-            if not getattr(event, '_deleted', False):
-                # Delete user message
-                try:
-                    await self.message_manager.delete_user_message(event)
-                except Exception as e:
-                    logger.debug(f"Could not delete user message {event.message_id}: {e}")
+            # Mark user message as temporary (ephemeral) in registry
+            # It will be deleted when bot sends system or regular message
+            try:
+                from bot.core.message_registry import ManagedMessage, MessageType
+                managed = ManagedMessage(
+                    message_id=event.message_id,
+                    chat_id=event.chat.id,
+                    message_type=MessageType.EPHEMERAL,
+                    tag="user_message"
+                )
+                await self.message_manager.registry.register(managed)
+                logger.debug(f"Marked user message {event.message_id} as temporary")
+            except Exception as e:
+                logger.debug(f"Could not mark user message {event.message_id} as temporary: {e}")
         
         return result
 
