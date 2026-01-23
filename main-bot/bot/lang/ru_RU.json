@@ -64,6 +64,7 @@
   "settings_btn_retrain": "🎯 Переобучить ленту",
   "settings_btn_language": "🌐 Язык",
   "settings_btn_back": "◀️ Назад",
+  "language_selection_title": "🌐 <b>Выберите язык</b>\n\nВыберите предпочитаемый язык:",
   "confirm_btn_yes": "✅ Да",
   "confirm_btn_no": "❌ Нет",
   "cancel_btn_cancel": "❌ Отмена",
