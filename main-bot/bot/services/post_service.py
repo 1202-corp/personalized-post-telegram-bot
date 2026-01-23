@@ -51,15 +51,15 @@ class PostService:
             post: Post data dict (may contain pre-formatted text)
             keyboard: Optional inline keyboard
             tag: Message tag for message_manager
-            message_type: Type of message (ephemeral, onetime, system)
+            message_type: Type of message (temporary, regular, system)
             include_relevance: Include relevance score in text (only if text not pre-formatted)
         
         Returns:
             Tuple of (sent_with_caption: bool, media_message_ids: List[int])
         """
-        # Check if text is already formatted (contains markdown links or special formatting)
+        # Check if text is already formatted (contains HTML links or special formatting)
         post_text = post.get("text", "")
-        if not post_text or (not post_text.startswith("📰") and not "[" in post_text):
+        if not post_text or (not post_text.startswith("📰") and not "<a href" in post_text):
             # Text not formatted, use format_post_text
             post_text = format_post_text(post, include_relevance=include_relevance)
         caption_fits = len(post_text) <= TELEGRAM_CAPTION_LIMIT
@@ -67,10 +67,10 @@ class PostService:
         media_message_ids: List[int] = []
         
         # Determine send method based on message_type
-        if message_type == "ephemeral":
-            send_method = self.message_manager.send_ephemeral
-        elif message_type == "onetime":
-            send_method = self.message_manager.send_onetime
+        if message_type == "temporary" or message_type == "ephemeral":
+            send_method = self.message_manager.send_temporary
+        elif message_type == "regular" or message_type == "onetime":
+            send_method = self.message_manager.send_regular
         else:
             send_method = self.message_manager.send_system
         
@@ -130,8 +130,8 @@ class PostService:
                     if photo_bytes:
                         if caption_fits:
                             # Delete previous message with same tag
-                            if message_type == "ephemeral":
-                                await self.message_manager.delete_ephemeral(chat_id, tag=tag)
+                            if message_type == "temporary" or message_type == "ephemeral":
+                                await self.message_manager.delete_temporary(chat_id, tag=tag)
                             
                             await send_method(
                                 chat_id,
@@ -153,8 +153,8 @@ class PostService:
         
         # Send text message if not sent with caption
         if not sent_with_caption:
-            if message_type == "ephemeral":
-                await self.message_manager.delete_ephemeral(chat_id, tag=tag)
+            if message_type == "temporary" or message_type == "ephemeral":
+                await self.message_manager.delete_temporary(chat_id, tag=tag)
             
             await send_method(
                 chat_id,

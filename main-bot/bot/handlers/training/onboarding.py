@@ -15,7 +15,7 @@ from bot.core import (
 )
 from bot.core.states import TrainingStates
 from bot.services import get_core_api, get_user_bot
-from bot.utils import escape_md
+import html
 from .helpers import _get_user_lang, _start_training_session, finish_training_flow
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ async def on_start_training(
     message_manager: MessageManager
 ):
     """Handle Start Training button - scrape posts and show MiniApp/chat choice."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     api = get_core_api()
     user_bot = get_user_bot()
     user_id = callback.from_user.id
@@ -125,11 +125,11 @@ async def on_how_it_works(
     message_manager: MessageManager
 ):
     """Show how the bot works."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    await message_manager.send_ephemeral(
+    await message_manager.send_temporary(
         callback.message.chat.id,
         texts.get("how_it_works"),
         auto_delete_after=20.0
@@ -143,7 +143,7 @@ async def on_confirm_training(
     state: FSMContext
 ):
     """Start the actual training process."""
-    await callback.answer("🚀 Starting training...")
+    await message_manager.send_toast(callback, "🚀 Starting training...")
     api = get_core_api()
     user_bot = get_user_bot()
     user_id = callback.from_user.id
@@ -214,7 +214,7 @@ async def on_add_channel(
     state: FSMContext
 ):
     """Prompt user to add a channel."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     await state.set_state(TrainingStates.waiting_for_channel)
     
     lang = await _get_user_lang(callback.from_user.id)
@@ -245,8 +245,11 @@ async def on_channel_input(
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
+    # Delete user's message
+    await message_manager.delete_user_message(message)
+    
     if not channel_input.startswith("@") and not channel_input.startswith("https://t.me/"):
-        await message_manager.send_ephemeral(
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("invalid_channel_username"),
             auto_delete_after=5.0
@@ -258,7 +261,7 @@ async def on_channel_input(
     else:
         username = channel_input
     
-    await message_manager.send_ephemeral(
+    await message_manager.send_temporary(
         message.chat.id,
         texts.get("checking_channel", username=username),
         tag="loading"
@@ -271,8 +274,8 @@ async def on_channel_input(
         await api.add_user_channel(user_id, username, is_for_training=True)
         await api.create_log(user_id, "channel_added", username)
         
-        await message_manager.delete_ephemeral(message.chat.id, tag="loading")
-        await message_manager.send_ephemeral(
+        await message_manager.delete_temporary(message.chat.id, tag="loading")
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("channel_added", username=username),
             auto_delete_after=3.0
@@ -286,8 +289,8 @@ async def on_channel_input(
             tag="menu"
         )
     else:
-        await message_manager.delete_ephemeral(message.chat.id, tag="loading")
-        await message_manager.send_ephemeral(
+        await message_manager.delete_temporary(message.chat.id, tag="loading")
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("cannot_access_channel", username=username),
             auto_delete_after=5.0
@@ -301,7 +304,7 @@ async def on_skip_add_channel(
     state: FSMContext
 ):
     """Skip adding custom channel."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     await state.clear()
     
     lang = await _get_user_lang(callback.from_user.id)
@@ -322,11 +325,11 @@ async def on_back_to_start(
     message_manager: MessageManager
 ):
     """Go back to start menu."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
-    name = escape_md(callback.from_user.first_name or "there")
+    name = html.escape(callback.from_user.first_name or "there")
     
     try:
         await callback.message.edit_text(
@@ -344,7 +347,7 @@ async def on_back_to_onboarding(
     state: FSMContext
 ):
     """Go back to onboarding menu."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     await state.clear()
     
     lang = await _get_user_lang(callback.from_user.id)

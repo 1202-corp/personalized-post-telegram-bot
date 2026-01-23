@@ -2,6 +2,7 @@
 Command handlers (/start, /help, etc.)
 """
 
+import html
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
@@ -12,7 +13,6 @@ from bot.core import (
     get_start_keyboard, get_feed_keyboard, get_settings_keyboard,
 )
 from bot.services import get_core_api
-from bot.utils import escape_md
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -38,11 +38,13 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     api = get_core_api()
     
     # Get or create user in database first, then log activity
+    # Pass Telegram language_code to set initial language based on user's Telegram interface
     user_data = await api.get_or_create_user(
         telegram_id=user.id,
         username=user.username,
         first_name=user.first_name,
         last_name=user.last_name,
+        language_code=user.language_code,  # Telegram interface language
     )
     
     # Log activity
@@ -52,18 +54,16 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     if not user_data:
         lang = await api.get_user_language(user.id)
         texts = get_texts(lang)
-        await message_manager.send_ephemeral(
+        await message_manager.send_system(
             message.chat.id,
             texts.get("error_generic"),
-            auto_delete_after=5.0
+            tag="menu",
+            is_start=True
         )
         return
     
     # Delete user's /start command message to keep chat clean
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await message_manager.delete_user_message(message)
     
     # Get user's language preference
     lang = await api.get_user_language(user.id)
@@ -71,7 +71,7 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     
     # Check user status and route accordingly
     status = user_data.get("status", "new")
-    name = escape_md(user.first_name or "there")
+    name = html.escape(user.first_name or "there")
     
     if status in ["new", "onboarding"]:
         # Show onboarding
@@ -80,7 +80,8 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             message.chat.id,
             texts.get("welcome", name=name),
             reply_markup=get_start_keyboard(lang),
-            tag="menu"
+            tag="menu",
+            is_start=True
         )
     elif status == "training":
         # Resume training
@@ -88,7 +89,8 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             message.chat.id,
             texts.get("resume_training"),
             reply_markup=get_start_keyboard(lang),
-            tag="menu"
+            tag="menu",
+            is_start=True
         )
     elif status in ["trained", "active"]:
         # Show main feed
@@ -97,7 +99,8 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             message.chat.id,
             texts.get("welcome_back", name=name),
             reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
-            tag="menu"
+            tag="menu",
+            is_start=True
         )
     else:
         # Default to onboarding
@@ -105,7 +108,8 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             message.chat.id,
             texts.get("welcome", name=name),
             reply_markup=get_start_keyboard(lang),
-            tag="menu"
+            tag="menu",
+            is_start=True
         )
 
 
@@ -114,12 +118,15 @@ async def cmd_help(message: Message, message_manager: MessageManager):
     """Handle /help command."""
     await get_core_api().update_activity(message.from_user.id)
     
+    # Delete user's message
+    await message_manager.delete_user_message(message)
+    
     lang = await _get_user_lang(message.from_user.id)
     texts = get_texts(lang)
-    await message_manager.send_ephemeral(
+    await message_manager.send_system(
         message.chat.id,
         texts.get("help"),
-        auto_delete_after=30.0
+        tag="menu"
     )
 
 
@@ -129,6 +136,9 @@ async def cmd_status(message: Message, message_manager: MessageManager):
     api = get_core_api()
     await api.update_activity(message.from_user.id)
     
+    # Delete user's message
+    await message_manager.delete_user_message(message)
+    
     user_data = await api.get_user(message.from_user.id)
     user_id = message.from_user.id
     
@@ -136,10 +146,10 @@ async def cmd_status(message: Message, message_manager: MessageManager):
     texts = get_texts(lang)
     
     if not user_data:
-        await message_manager.send_ephemeral(
+        await message_manager.send_system(
             message.chat.id,
             texts.get("error_generic"),
-            auto_delete_after=5.0
+            tag="menu"
         )
         return
     
@@ -149,26 +159,29 @@ async def cmd_status(message: Message, message_manager: MessageManager):
         bonus_channels=user_data.get("bonus_channels_count", 0),
     )
     
-    await message_manager.send_ephemeral(
+    await message_manager.send_system(
         message.chat.id,
         status_text,
-        auto_delete_after=15.0
+        tag="menu"
     )
 
 
 @router.message(Command("reset"))
 async def cmd_reset(message: Message, message_manager: MessageManager):
     """Handle /reset command - Clean up chat messages."""
+    # Delete user's message
+    await message_manager.delete_user_message(message)
+    
     await message_manager.cleanup_chat(
         message.chat.id,
         include_system=True,
-        include_onetime=False
+        include_regular=False
     )
     
-    await message_manager.send_ephemeral(
+    await message_manager.send_system(
         message.chat.id,
         "🧹 Chat cleaned up! Use /start to begin again.",
-        auto_delete_after=5.0
+        tag="menu"
     )
 
 
@@ -183,18 +196,17 @@ async def on_set_lang_en(callback: CallbackQuery, message_manager: MessageManage
     
     # Get texts in new language
     texts = get_texts("en_US")
-    name = escape_md(callback.from_user.first_name or "there")
+    name = html.escape(callback.from_user.first_name or "there")
     
-    await callback.answer("Language: English")
+    await message_manager.send_toast(callback, "Language: English")
     
-    # Edit current message instead of sending new one
-    try:
-        await callback.message.edit_text(
-            texts.get("welcome", name=name),
-            reply_markup=get_start_keyboard("en_US")
-        )
-    except Exception:
-        pass
+    # Update system message
+    await message_manager.send_system(
+        callback.message.chat.id,
+        texts.get("welcome", name=name),
+        reply_markup=get_start_keyboard("en_US"),
+        tag="menu"
+    )
 
 
 @router.callback_query(F.data == "set_lang_ru")
@@ -208,24 +220,23 @@ async def on_set_lang_ru(callback: CallbackQuery, message_manager: MessageManage
     
     # Get texts in new language
     texts = get_texts("ru_RU")
-    name = escape_md(callback.from_user.first_name or "there")
+    name = html.escape(callback.from_user.first_name or "there")
     
-    await callback.answer("Язык: русский")
+    await message_manager.send_toast(callback, "Язык: русский")
     
-    # Edit current message instead of sending new one
-    try:
-        await callback.message.edit_text(
-            texts.get("welcome", name=name),
-            reply_markup=get_start_keyboard("ru_RU")
-        )
-    except Exception:
-        pass
+    # Update system message
+    await message_manager.send_system(
+        callback.message.chat.id,
+        texts.get("welcome", name=name),
+        reply_markup=get_start_keyboard("ru_RU"),
+        tag="menu"
+    )
 
 
 @router.callback_query(F.data == "change_language")
 async def on_change_language(callback: CallbackQuery, message_manager: MessageManager):
     """Show language selection from settings."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     
@@ -237,13 +248,12 @@ async def on_change_language(callback: CallbackQuery, message_manager: MessageMa
         [InlineKeyboardButton(text="⬅️ Back", callback_data="settings")],
     ])
     
-    try:
-        await callback.message.edit_text(
-            "🌐 Select language / Выберите язык:",
-            reply_markup=keyboard
-        )
-    except Exception:
-        pass
+    await message_manager.send_system(
+        callback.message.chat.id,
+        "🌐 Select language / Выберите язык:",
+        reply_markup=keyboard,
+        tag="menu"
+    )
 
 
 @router.callback_query(F.data == "settings_lang_en")
@@ -255,15 +265,14 @@ async def on_settings_lang_en(callback: CallbackQuery, message_manager: MessageM
     await api.set_user_language(user_id, "en_US")
     texts = get_texts("en_US")
     
-    await callback.answer("Language: English")
+    await message_manager.send_toast(callback, "Language: English")
     
-    try:
-        await callback.message.edit_text(
-            texts.get("settings_title"),
-            reply_markup=get_settings_keyboard("en_US")
-        )
-    except Exception:
-        pass
+    await message_manager.send_system(
+        callback.message.chat.id,
+        texts.get("settings_title"),
+        reply_markup=get_settings_keyboard("en_US"),
+        tag="menu"
+    )
 
 
 @router.callback_query(F.data == "settings_lang_ru")
@@ -275,12 +284,11 @@ async def on_settings_lang_ru(callback: CallbackQuery, message_manager: MessageM
     await api.set_user_language(user_id, "ru_RU")
     texts = get_texts("ru_RU")
     
-    await callback.answer("Язык: русский")
+    await message_manager.send_toast(callback, "Язык: русский")
     
-    try:
-        await callback.message.edit_text(
-            texts.get("settings_title"),
-            reply_markup=get_settings_keyboard("ru_RU")
-        )
-    except Exception:
-        pass
+    await message_manager.send_system(
+        callback.message.chat.id,
+        texts.get("settings_title"),
+        reply_markup=get_settings_keyboard("ru_RU"),
+        tag="menu"
+    )

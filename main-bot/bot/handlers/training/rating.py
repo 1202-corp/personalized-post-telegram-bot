@@ -27,7 +27,7 @@ async def on_rate_post(
     """Handle post rating (like/dislike/skip)."""
     callback_key = f"{callback.from_user.id}:{callback.message.message_id}"
     if callback_key in _processed_rate_callbacks:
-        await callback.answer()
+        await message_manager.send_toast(callback)
         return
     _processed_rate_callbacks.add(callback_key)
     
@@ -37,7 +37,10 @@ async def on_rate_post(
     _, action, post_id = callback.data.split(":")
     post_id = int(post_id)
     
-    await callback.answer(f"{'👍' if action == 'like' else '👎' if action == 'dislike' else '⏭️'}")
+    await message_manager.send_toast(
+        callback, 
+        f"{'👍' if action == 'like' else '👎' if action == 'dislike' else '⏭️'}"
+    )
     
     api = get_core_api()
     user_id = callback.from_user.id
@@ -48,7 +51,7 @@ async def on_rate_post(
         await api.create_interaction(user_id, post_id, action)
         await api.create_log(user_id, f"post_{action}", f"post_id={post_id}")
 
-    await message_manager.delete_ephemeral(callback.message.chat.id, tag="training_nudge")
+    await message_manager.delete_temporary(callback.message.chat.id, tag="training_nudge")
 
     data = await state.get_data()
     last_media_ids = data.get("last_media_ids", []) or []
@@ -57,7 +60,7 @@ async def on_rate_post(
             await message_manager.bot.delete_message(callback.message.chat.id, mid)
         except Exception:
             pass
-    await message_manager.delete_ephemeral(callback.message.chat.id, tag="training_post")
+    await message_manager.delete_temporary(callback.message.chat.id, tag="training_post")
     
     new_index = data.get("current_post_index", 0) + 1
     rated_count = data.get("rated_count", 0) + (1 if action != "skip" else 0)
@@ -79,7 +82,7 @@ async def on_finish_training(
     state: FSMContext
 ):
     """Finish training and trigger ML model."""
-    await callback.answer("🎯 Finishing training...")
-    await message_manager.delete_ephemeral(callback.message.chat.id, tag="training_nudge")
+    await message_manager.send_toast(callback, "🎯 Finishing training...")
+    await message_manager.delete_temporary(callback.message.chat.id, tag="training_nudge")
     await finish_training_flow(callback.message.chat.id, message_manager, state)
 

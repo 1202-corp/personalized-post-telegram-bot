@@ -13,7 +13,7 @@ from bot.core import (
 )
 from bot.core.states import FeedStates
 from bot.services import get_core_api, get_user_bot
-from bot.utils import escape_md
+import html
 from bot.handlers.training.retrain import start_full_retrain, start_bonus_training
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ async def on_claim_bonus(
     message_manager: MessageManager
 ):
     """Show bonus channel claim option."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     api = get_core_api()
     user_id = callback.from_user.id
     
@@ -42,7 +42,7 @@ async def on_claim_bonus(
     texts = get_texts(lang)
     
     if user_data and user_data.get("bonus_channels_count", 0) >= 1:
-        await message_manager.send_ephemeral(
+        await message_manager.send_temporary(
             callback.message.chat.id,
             texts.get("already_have_bonus"),
             auto_delete_after=5.0
@@ -64,7 +64,7 @@ async def on_retrain_model(
     state: FSMContext,
 ):
     """Start a new interactive retraining session on user's channels."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
 
     await start_full_retrain(
         chat_id=callback.message.chat.id,
@@ -81,7 +81,7 @@ async def on_add_bonus_channel(
     state: FSMContext
 ):
     """Prompt for bonus channel."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     
     api = get_core_api()
     user_id = callback.from_user.id
@@ -136,14 +136,14 @@ async def on_bonus_channel_input(
     elif channel_input.startswith("@"):
         username = channel_input
     else:
-        await message_manager.send_ephemeral(
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("invalid_channel_username_short"),
             auto_delete_after=5.0
         )
         return
     
-    await message_manager.send_ephemeral(
+    await message_manager.send_temporary(
         message.chat.id,
         texts.get("adding_bonus_channel", username=username),
         tag="loading"
@@ -159,7 +159,8 @@ async def on_bonus_channel_input(
             telegram_id=user_id,
             username=user_obj.username,
             first_name=user_obj.first_name,
-            last_name=user_obj.last_name
+            last_name=user_obj.last_name,
+            language_code=user_obj.language_code
         )
         
         add_result = await api.add_user_channel(user_id, username, is_bonus=True)
@@ -168,7 +169,7 @@ async def on_bonus_channel_input(
             await api.create_log(user_id, "bonus_channel_claimed", username)
         
         await state.clear()
-        await message_manager.delete_ephemeral(message.chat.id, tag="loading")
+        await message_manager.delete_temporary(message.chat.id, tag="loading")
 
         await start_bonus_training(
             chat_id=message.chat.id,
@@ -178,8 +179,8 @@ async def on_bonus_channel_input(
             state=state,
         )
     else:
-        await message_manager.delete_ephemeral(message.chat.id, tag="loading")
-        await message_manager.send_ephemeral(
+        await message_manager.delete_temporary(message.chat.id, tag="loading")
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("cannot_access_channel", username=username),
             auto_delete_after=5.0
@@ -195,7 +196,7 @@ async def on_skip_bonus(
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    await callback.answer(texts.get("you_can_claim_later"))
+    await message_manager.send_toast(callback, texts.get("you_can_claim_later"))
     
     await message_manager.send_system(
         callback.message.chat.id,
@@ -212,7 +213,7 @@ async def on_add_channel_feed(
     state: FSMContext
 ):
     """Add a new channel from feed menu."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     
     api = get_core_api()
     user_id = callback.from_user.id
@@ -230,7 +231,7 @@ async def on_add_channel_feed(
         return
     
     await state.set_state(FeedStates.adding_channel)
-    await message_manager.delete_ephemeral(callback.message.chat.id, tag="bonus_nudge")
+    await message_manager.delete_temporary(callback.message.chat.id, tag="bonus_nudge")
     
     try:
         await callback.message.edit_text(
@@ -254,10 +255,7 @@ async def on_channel_feed_input(
 ):
     """Handle channel input from feed menu - same as bonus channel flow."""
     channel_input = message.text.strip()
-    try:
-        await message.delete()
-    except Exception:
-        pass
+    await message_manager.delete_user_message(message)
     
     api = get_core_api()
     user_bot = get_user_bot()
@@ -283,14 +281,14 @@ async def on_channel_feed_input(
     elif channel_input.startswith("@"):
         username = channel_input
     else:
-        await message_manager.send_ephemeral(
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("invalid_channel_username_short"),
             auto_delete_after=5.0
         )
         return
     
-    await message_manager.send_ephemeral(
+    await message_manager.send_temporary(
         message.chat.id,
         texts.get("adding_bonus_channel", username=username),
         tag="loading"
@@ -306,7 +304,8 @@ async def on_channel_feed_input(
             telegram_id=user_id,
             username=user_obj.username,
             first_name=user_obj.first_name,
-            last_name=user_obj.last_name
+            last_name=user_obj.last_name,
+            language_code=user_obj.language_code
         )
         
         add_result = await api.add_user_channel(user_id, username, is_bonus=True)
@@ -315,7 +314,7 @@ async def on_channel_feed_input(
             await api.create_log(user_id, "bonus_channel_claimed", username)
         
         await state.clear()
-        await message_manager.delete_ephemeral(message.chat.id, tag="loading")
+        await message_manager.delete_temporary(message.chat.id, tag="loading")
         
         await start_bonus_training(
             chat_id=message.chat.id,
@@ -325,8 +324,8 @@ async def on_channel_feed_input(
             state=state,
         )
     else:
-        await message_manager.delete_ephemeral(message.chat.id, tag="loading")
-        await message_manager.send_ephemeral(
+        await message_manager.delete_temporary(message.chat.id, tag="loading")
+        await message_manager.send_temporary(
             message.chat.id,
             texts.get("cannot_access_channel", username=username),
             auto_delete_after=5.0
@@ -339,7 +338,7 @@ async def on_settings(
     message_manager: MessageManager
 ):
     """Show settings menu."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
@@ -359,7 +358,7 @@ async def on_my_channels(
     message_manager: MessageManager
 ):
     """Show user's channels."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     api = get_core_api()
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
@@ -371,8 +370,8 @@ async def on_my_channels(
     else:
         text = texts.get("your_channels_header")
         for ch in channels:
-            username = escape_md(ch.get("username", "Unknown"))
-            title = escape_md(ch.get("title", ""))
+            username = html.escape(ch.get("username", "Unknown"))
+            title = html.escape(ch.get("title", ""))
             text += f"• @{username} - {title}\n"
     
     from bot.core import get_channels_view_keyboard
@@ -391,7 +390,7 @@ async def on_back_to_settings(
     message_manager: MessageManager
 ):
     """Go back to settings menu."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
@@ -410,7 +409,7 @@ async def on_back_to_feed(
     message_manager: MessageManager
 ):
     """Go back to feed menu."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     
     api = get_core_api()
     user_data = await api.get_user(callback.from_user.id)
@@ -437,7 +436,7 @@ async def on_cancel(
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     
-    await callback.answer(texts.get("cancelled"))
+    await message_manager.send_toast(callback, texts.get("cancelled"))
     
     current_state = await state.get_state()
     state_data = await state.get_data()
@@ -486,7 +485,7 @@ async def on_cancel(
                 pass
     else:
         from bot.core import get_start_keyboard
-        name = escape_md(callback.from_user.first_name or "there")
+        name = html.escape(callback.from_user.first_name or "there")
         try:
             await callback.message.edit_text(
                 texts.get("welcome", name=name),

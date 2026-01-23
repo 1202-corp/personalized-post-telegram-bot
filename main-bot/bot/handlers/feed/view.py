@@ -10,7 +10,7 @@ from bot.core import MessageManager, get_texts, get_feed_keyboard, get_feed_post
 from bot.services import get_core_api, get_user_bot
 from bot.services.media_service import MediaService
 from bot.services.post_service import PostService
-from bot.utils import escape_md
+import html
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -31,7 +31,7 @@ async def on_view_feed(
     message_manager: MessageManager
 ):
     """Show the personalized feed."""
-    await callback.answer()
+    await message_manager.send_toast(callback)
     api = get_core_api()
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
@@ -104,18 +104,18 @@ async def on_view_feed(
 
     # Send initial best post once, if applicable
     if initial_best_post:
-        # Format post text with hyperlink
-        channel_title = escape_md(initial_best_post.get("channel_title", "Unknown"))
+        # Format post text with hyperlink (HTML)
+        channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
         channel_username = initial_best_post.get("channel_username", "").lstrip("@")
         message_id = initial_best_post.get("telegram_message_id")
         full_text_raw = initial_best_post.get("text") or ""
-        text = escape_md(full_text_raw)
+        text = html.escape(full_text_raw)
         
         if channel_username and message_id:
-            header = f"📰 [{channel_title}](https://t.me/{channel_username}/{message_id})\n\n"
+            header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"
         else:
-            header = f"📰 *{channel_title}*\n\n"
-        body = text if text else "_[Media content]_"
+            header = f"📰 <b>{channel_title}</b>\n\n"
+        body = text if text else "<i>[Media content]</i>"
         post_text = header + body
         
         # Update post dict with formatted text for post_service
@@ -127,7 +127,7 @@ async def on_view_feed(
             formatted_post,
             keyboard=get_feed_post_keyboard(initial_best_post.get("id"), lang) if initial_best_post.get("id") else None,
             tag="feed_post",
-            message_type="onetime",
+            message_type="regular",
             include_relevance=True,
         )
         # Mark as sent so we don't repeat in future sessions
@@ -135,18 +135,18 @@ async def on_view_feed(
 
     # Send remaining feed posts
     for post in feed_posts:
-        # Format post text with hyperlink
-        channel_title = escape_md(post.get("channel_title", "Unknown"))
+        # Format post text with hyperlink (HTML)
+        channel_title = html.escape(post.get("channel_title", "Unknown"))
         channel_username = post.get("channel_username", "").lstrip("@")
         message_id = post.get("telegram_message_id")
         full_text_raw = post.get("text") or ""
-        text = escape_md(full_text_raw)
+        text = html.escape(full_text_raw)
         
         if channel_username and message_id:
-            header = f"📰 [{channel_title}](https://t.me/{channel_username}/{message_id})\n\n"
+            header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"
         else:
-            header = f"📰 *{channel_title}*\n\n"
-        body = text if text else "_[Media content]_"
+            header = f"📰 <b>{channel_title}</b>\n\n"
+        body = text if text else "<i>[Media content]</i>"
         post_text = header + body
         
         # Update post dict with formatted text for post_service
@@ -158,7 +158,7 @@ async def on_view_feed(
             formatted_post,
             keyboard=get_feed_post_keyboard(post.get("id"), lang) if post.get("id") else None,
             tag="feed_post",
-            message_type="onetime",
+            message_type="regular",
             include_relevance=True,
         )
 
@@ -171,7 +171,7 @@ async def on_feed_interaction(
     """Handle feed post interactions (like/dislike)."""
     callback_key = f"{callback.from_user.id}:{callback.message.message_id}"
     if callback_key in _processed_feed_callbacks:
-        await callback.answer()
+        await message_manager.send_toast(callback)
         return
     _processed_feed_callbacks.add(callback_key)
     
@@ -181,7 +181,7 @@ async def on_feed_interaction(
     _, action, post_id = callback.data.split(":")
     post_id = int(post_id)
     
-    await callback.answer("👍" if action == "like" else "👎")
+    await message_manager.send_toast(callback, "👍" if action == "like" else "👎")
     
     api = get_core_api()
     user_id = callback.from_user.id

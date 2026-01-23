@@ -11,7 +11,8 @@ from bot.core.states import TrainingStates
 from bot.services import get_core_api, get_user_bot
 from bot.services.media_service import MediaService
 from bot.services.nudge_service import NudgeService
-from bot.utils import escape_md, TELEGRAM_CAPTION_LIMIT
+import html
+from bot.utils import TELEGRAM_CAPTION_LIMIT
 from bot.core import (
     get_training_post_keyboard, get_feed_keyboard, get_training_complete_keyboard,
     get_bonus_channel_keyboard,
@@ -108,7 +109,7 @@ async def _bonus_channel_nudge_watcher(
             if not text:
                 text = "🎁 You still have a free bonus channel to claim."
 
-            await message_manager.send_ephemeral(
+            await message_manager.send_temporary(
                 chat_id,
                 text,
                 reply_markup=get_bonus_channel_keyboard(lang),
@@ -135,10 +136,10 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     
     post = posts[index]
     
-    # Format post text (escape user content for Markdown)
-    channel_title = escape_md(post.get("channel_title", "Unknown Channel"))
+    # Format post text (escape user content for HTML)
+    channel_title = html.escape(post.get("channel_title", "Unknown Channel"))
     full_text_raw = post.get("text") or ""
-    post_text = escape_md(full_text_raw)
+    post_text = html.escape(full_text_raw)
     channel_username = post.get("channel_username", "").lstrip("@")
     msg_id = post.get("telegram_message_id")
     
@@ -146,13 +147,13 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    # Build post text with hyperlink to original
-    text = f"📰 *{texts.get('post_label', default='Post')} {index + 1}/{len(posts)}*\n"
+    # Build post text with hyperlink to original (HTML format)
+    text = f"📰 <b>{texts.get('post_label', default='Post')} {index + 1}/{len(posts)}</b>\n"
     if channel_username and msg_id:
-        text += f"{texts.get('from_label', default='From')}: [{escape_md(channel_title)}](https://t.me/{channel_username}/{msg_id})\n\n"
+        text += f"{texts.get('from_label', default='From')}: <a href=\"https://t.me/{channel_username}/{msg_id}\">{channel_title}</a>\n\n"
     else:
-        text += f"{texts.get('from_label', default='From')}: {escape_md(channel_title)}\n\n"
-    text += post_text if post_text else "_[Media content]_"
+        text += f"{texts.get('from_label', default='From')}: {channel_title}\n\n"
+    text += post_text if post_text else "<i>[Media content]</i>"
     caption_fits = len(text) <= TELEGRAM_CAPTION_LIMIT
     sent_with_caption = False
     media_message_ids: list[int] = []
@@ -224,8 +225,8 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
                         photo_bytes = None
                 if photo_bytes:
                     if caption_fits:
-                        await message_manager.delete_ephemeral(chat_id, tag="training_post")
-                        await message_manager.send_ephemeral(
+                        await message_manager.delete_temporary(chat_id, tag="training_post")
+                        await message_manager.send_temporary(
                             chat_id,
                             text,
                             reply_markup=get_training_post_keyboard(post.get("id"), lang),
@@ -260,7 +261,7 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
             try:
                 input_file = BufferedInputFile(video_bytes, filename=f"{msg_id}.mp4")
                 if caption_fits:
-                    await message_manager.delete_ephemeral(chat_id, tag="training_post")
+                    await message_manager.delete_temporary(chat_id, tag="training_post")
                     msg = await message_manager.bot.send_video(
                         chat_id=chat_id,
                         video=input_file,
@@ -292,8 +293,8 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
 
     # Send text-only ephemeral (will be replaced by next post) when not already sent as caption
     if not sent_with_caption:
-        await message_manager.delete_ephemeral(chat_id, tag="training_post")
-        await message_manager.send_ephemeral(
+        await message_manager.delete_temporary(chat_id, tag="training_post")
+        await message_manager.send_temporary(
             chat_id,
             text,
             reply_markup=get_training_post_keyboard(post.get("id"), lang),
@@ -342,10 +343,10 @@ async def finish_training_flow(chat_id: int, message_manager: MessageManager, st
         await api.update_user(user_id, status="active", is_trained=True)
     
     # Clean up all training-related messages
-    await message_manager.delete_ephemeral(chat_id, tag="training_post")
-    await message_manager.delete_ephemeral(chat_id, tag="training_nudge")
-    await message_manager.delete_ephemeral(chat_id, tag="bonus_nudge")
-    await message_manager.delete_ephemeral(chat_id, tag="miniapp_choice")
+    await message_manager.delete_temporary(chat_id, tag="training_post")
+    await message_manager.delete_temporary(chat_id, tag="training_nudge")
+    await message_manager.delete_temporary(chat_id, tag="bonus_nudge")
+    await message_manager.delete_temporary(chat_id, tag="miniapp_choice")
     
     # Clear media cache for this chat to prevent late posts
     media_service = _get_media_service()
@@ -460,19 +461,19 @@ async def send_initial_best_post(
         initial_best_post = all_posts[0]
 
     # Send this post similarly to feed posts (with rating buttons)
-    channel_title = escape_md(initial_best_post.get("channel_title", "Unknown"))
+    channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
     channel_username = (initial_best_post.get("channel_username") or "").lstrip("@")
     msg_id = initial_best_post.get("telegram_message_id")
     full_text_raw = initial_best_post.get("text") or ""
-    text = escape_md(full_text_raw)
+    text = html.escape(full_text_raw)
     score = initial_best_post.get("relevance_score", 0)
 
-    # Build header with link to original post
+    # Build header with link to original post (HTML format)
     if channel_username and msg_id:
-        header = f"📰 [{channel_title}](https://t.me/{channel_username}/{msg_id})\n\n"
+        header = f"📰 <a href=\"https://t.me/{channel_username}/{msg_id}\">{channel_title}</a>\n\n"
     else:
-        header = f"📰 *{channel_title}*\n\n"
-    body = text if text else "_[Media content]_"
+        header = f"📰 <b>{channel_title}</b>\n\n"
+    body = text if text else "<i>[Media content]</i>"
     post_text = header + body
 
     caption_fits = len(post_text) <= TELEGRAM_CAPTION_LIMIT
@@ -514,7 +515,7 @@ async def send_initial_best_post(
                     await message_manager.bot.send_message(
                         chat_id=chat_id,
                         text=post_text,
-                        parse_mode="MarkdownV2",
+                        parse_mode="HTML",
                         reply_markup=get_feed_post_keyboard(initial_best_post.get("id")) if initial_best_post.get("id") else None,
                         link_preview_options=LinkPreviewOptions(is_disabled=True),
                     )
@@ -528,7 +529,7 @@ async def send_initial_best_post(
                 if photo_bytes:
                     from bot.core import get_feed_post_keyboard
                     if caption_fits:
-                        await message_manager.send_onetime(
+                        await message_manager.send_regular(
                             chat_id,
                             post_text,
                             reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
