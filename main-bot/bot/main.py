@@ -66,9 +66,12 @@ async def main():
     message_manager = MessageManager(bot)
     
     # Register routers
+    # Order matters: more specific handlers (commands, FSM states) should be registered first
+    # Catch-all handlers should be registered last
     dp.include_router(commands.router)
     dp.include_router(training_router)
     dp.include_router(feed_router)
+    # Note: catch-all handler in commands.router will process messages not handled by above routers
     
     # Middleware to inject message_manager into handlers
     dp.update.middleware(MessageManagerMiddleware(message_manager))
