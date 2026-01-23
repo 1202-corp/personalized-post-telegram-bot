@@ -283,14 +283,3 @@ async def on_settings_lang_ru(callback: CallbackQuery, message_manager: MessageM
         reply_markup=get_settings_keyboard("ru_RU"),
         tag="menu"
     )
-
-
-@router.message()
-async def catch_all_messages(message: Message, message_manager: MessageManager):
-    """
-    Catch-all handler for all messages that don't match any other handler.
-    This ensures all user messages are deleted, even if they don't have a specific handler.
-    """
-    # Delete user message (middleware will also try, but this ensures it happens)
-    if message.from_user and not message.from_user.is_bot:
-        await message_manager.delete_user_message(message)

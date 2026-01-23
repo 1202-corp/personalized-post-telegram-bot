@@ -16,6 +16,7 @@ from bot.services import close_clients
 from bot.handlers import commands
 from bot.handlers.training import router as training_router
 from bot.handlers.feed import router as feed_router
+from bot.handlers import catch_all
 
 # Configure logging
 setup_logging(
@@ -65,10 +66,11 @@ async def main():
     # Initialize message manager
     message_manager = MessageManager(bot)
     
-    # Register routers
+    # Register routers (catch_all must be last to catch unhandled messages)
     dp.include_router(commands.router)
     dp.include_router(training_router)
     dp.include_router(feed_router)
+    dp.include_router(catch_all.router)  # Must be last!
     
     # Middleware to inject message_manager into handlers
     dp.update.middleware(MessageManagerMiddleware(message_manager))
