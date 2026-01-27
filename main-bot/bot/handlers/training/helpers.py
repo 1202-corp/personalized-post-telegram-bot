@@ -121,10 +121,9 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    # Format post text - already HTML formatted from user-bot
+    # Format post text (assume HTML comes from API/user-bot)
     channel_title = html.escape(post.get("channel_title", "Unknown Channel"))
-    full_text_raw = post.get("text") or ""
-    post_text = full_text_raw  # Already HTML formatted from Telegram
+    post_text = post.get("text") or ""
     channel_username = post.get("channel_username", "").lstrip("@")
     msg_id = post.get("telegram_message_id")
     

@@ -46,10 +46,6 @@ async def on_rate_post(
     
     await api.update_activity(user_id)
     
-    if action != "skip":
-        await api.create_interaction(user_id, post_id, action)
-        await api.create_log(user_id, f"post_{action}", f"post_id={post_id}")
-
     data = await state.get_data()
     
     # Set reaction on the regular post message
@@ -70,12 +66,72 @@ async def on_rate_post(
     # Delete temporary message with controls (post content is regular message, stays)
     await message_manager.delete_temporary(callback.message.chat.id, tag="training_post_controls")
     
-    new_index = data.get("current_post_index", 0) + 1
-    rated_count = data.get("rated_count", 0) + (1 if action != "skip" else 0)
+    # N-логика очереди и буфера взаимодействий
+    from random import choice
+    from bot.core import get_settings
+    settings = get_settings()
     
+    training_posts = data.get("training_posts", [])
+    queue = data.get("training_queue", [])
+    likes_count = int(data.get("likes_count", 0))
+    dislikes_count = int(data.get("dislikes_count", 0))
+    skips_count = int(data.get("skips_count", 0))
+    extra_from_dislike_used = int(data.get("extra_from_dislike_used", 0))
+    extra_from_skip_used = int(data.get("extra_from_skip_used", 0))
+    interactions_buffer = data.get("interactions_buffer", [])
+    
+    # Текущий пост - голова очереди
+    if not queue:
+        # Нет очереди — завершаем обучение
+        await finish_training_flow(callback.message.chat.id, message_manager, state)
+        return
+    
+    current_index = queue.pop(0)
+    
+    if action == "like":
+        likes_count += 1
+        interactions_buffer.append({"post_id": post_id, "interaction_type": "like"})
+    elif action == "dislike":
+        dislikes_count += 1
+        interactions_buffer.append({"post_id": post_id, "interaction_type": "dislike"})
+        if extra_from_dislike_used < settings.training_max_extra_from_dislike:
+            # Добавляем случайный новый пост из пула, который ещё не в очереди
+            available_indices = [i for i in range(len(training_posts)) if i not in queue and i != current_index]
+            if available_indices:
+                queue.append(choice(available_indices))
+                extra_from_dislike_used += 1
+    elif action == "skip":
+        skips_count += 1
+        if extra_from_skip_used < settings.training_max_extra_from_skip:
+            available_indices = [i for i in range(len(training_posts)) if i not in queue and i != current_index]
+            if available_indices:
+                queue.append(choice(available_indices))
+                extra_from_skip_used += 1
+    
+    # Если очередь опустела — заканчиваем
+    if not queue:
+        await state.update_data(
+            training_queue=queue,
+            likes_count=likes_count,
+            dislikes_count=dislikes_count,
+            skips_count=skips_count,
+            extra_from_dislike_used=extra_from_dislike_used,
+            extra_from_skip_used=extra_from_skip_used,
+            interactions_buffer=interactions_buffer,
+            current_post_message_id=None,
+        )
+        await finish_training_flow(callback.message.chat.id, message_manager, state)
+        return
+    
+    # Обновляем стейт и показываем следующий пост
     await state.update_data(
-        current_post_index=new_index,
-        rated_count=rated_count,
+        training_queue=queue,
+        likes_count=likes_count,
+        dislikes_count=dislikes_count,
+        skips_count=skips_count,
+        extra_from_dislike_used=extra_from_dislike_used,
+        extra_from_skip_used=extra_from_skip_used,
+        interactions_buffer=interactions_buffer,
         current_post_message_id=None,
     )
     

@@ -19,8 +19,14 @@ class Settings(BaseSettings):
     
     # Training settings
     default_training_channels: str = "@durov,@telegram"
-    posts_per_channel: int = 7
-    min_interactions_for_training: int = 5
+    # Number of recent posts per channel to consider for training pool
+    training_recent_posts_per_channel: int = 50
+    # Base number of posts to show in a single training session
+    training_base_posts_count: int = 20
+    # Max extra posts that can be added due to dislikes
+    training_max_extra_from_dislike: int = 5
+    # Max extra posts that can be added due to skips
+    training_max_extra_from_skip: int = 10
     
     # Localization (using locale format: language_COUNTRY)
     default_language: str = "en_US"
