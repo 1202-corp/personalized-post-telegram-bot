@@ -339,7 +339,11 @@ class MessageManager:
         reply_markup: Optional[InlineKeyboardMarkup] = None,
         tag: str = "menu"
     ) -> bool:
-        """Edit the existing system message with given tag."""
+        """
+        Edit the existing system message with given tag.
+        
+        If regular messages exist after the system message, recreates it instead of editing.
+        """
         # Delete all temporary messages before editing (same as send_system)
         await self._delete_all_temporary(chat_id)
         
@@ -347,6 +351,27 @@ class MessageManager:
         if not existing:
             return False
         
+        # Check if there are regular messages after system message
+        # If yes, we need to recreate instead of edit
+        regular_messages = await self.registry.get_messages(chat_id, MessageType.REGULAR)
+        should_recreate = False
+        for reg_msg in regular_messages:
+            if reg_msg.message_id > existing.message_id:
+                should_recreate = True
+                break
+        
+        if should_recreate:
+            # Recreate: send new first, then delete old
+            new_message = await self._send_new_system(
+                chat_id, text, reply_markup, tag, None, None, "photo.jpg"
+            )
+            if new_message:
+                await self._delete_message(chat_id, existing.message_id)
+                await self.registry.remove(chat_id, existing.message_id)
+                return True
+            return False
+        
+        # Try to edit existing
         try:
             await self.bot.edit_message_text(
                 text=text,
@@ -359,7 +384,15 @@ class MessageManager:
         except TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 return True  # Same content, considered success
-            logger.error(f"Failed to edit system message: {e}")
+            # Error editing, recreate
+            logger.warning(f"Failed to edit system message, recreating: {e}")
+            new_message = await self._send_new_system(
+                chat_id, text, reply_markup, tag, None, None, "photo.jpg"
+            )
+            if new_message:
+                await self._delete_message(chat_id, existing.message_id)
+                await self.registry.remove(chat_id, existing.message_id)
+                return True
             return False
     
     async def edit_reply_markup(
@@ -395,11 +428,11 @@ class MessageManager:
         """
         Check if system message should be recreated instead of edited.
         
-        Conditions for recreation:
+        Conditions for recreation (in priority order):
         1. /start command was called (always recreate)
         2. System message not found or deleted
-        3. Need to add/remove photo (current state is opposite)
-        4. After system message there are regular messages
+        3. After system message there are regular messages (CRITICAL RULE)
+        4. Need to add/remove photo (current state is opposite)
         5. Error occurred when trying to edit
         """
         # Always recreate on /start
@@ -411,6 +444,20 @@ class MessageManager:
         if not existing:
             return True
         
+        # CRITICAL RULE: Check if there are regular messages after system message
+        # If regular messages exist after system, ALWAYS recreate (don't edit)
+        # In Telegram, message_id always increases, so we check by message_id
+        regular_messages = await self.registry.get_messages(chat_id, MessageType.REGULAR)
+        if regular_messages:
+            # Check if any regular message has higher message_id than system (sent after)
+            for reg_msg in regular_messages:
+                if reg_msg.message_id > existing.message_id:
+                    logger.debug(
+                        f"Recreating system message: regular message {reg_msg.message_id} "
+                        f"exists after system message {existing.message_id}"
+                    )
+                    return True  # Regular message after system, MUST recreate
+        
         # Check if message still exists (try to get it)
         try:
             await self.bot.get_chat(chat_id)
@@ -421,14 +468,6 @@ class MessageManager:
         has_photo = photo is not None or photo_bytes is not None
         # We can't easily check if existing has photo, so we'll try edit first
         # This will be handled in send_system logic
-        
-        # Check if there are regular messages after system
-        regular_messages = await self.registry.get_messages(chat_id, MessageType.REGULAR)
-        if regular_messages:
-            # Check if any regular message was created after system
-            for reg_msg in regular_messages:
-                if reg_msg.created_at > existing.created_at:
-                    return True  # Regular message after system, need to recreate
         
         return False
     

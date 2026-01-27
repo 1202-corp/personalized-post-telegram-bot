@@ -379,10 +379,13 @@ async def on_my_channels(
     """Show user's channels."""
     await message_manager.send_toast(callback)
     api = get_core_api()
-    lang = await _get_user_lang(callback.from_user.id)
+    user_id = callback.from_user.id
+    lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    channels = await api.get_user_channels(callback.from_user.id)
+    channels = await api.get_user_channels(user_id)
+    user_data = await api.get_user(user_id)
+    has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
     
     if not channels:
         text = texts.get("no_user_channels")
@@ -398,7 +401,7 @@ async def on_my_channels(
     success = await message_manager.edit_system(
         callback.message.chat.id,
         text,
-        reply_markup=get_channels_view_keyboard(lang),
+        reply_markup=get_channels_view_keyboard(lang, has_bonus_channel=has_bonus),
         tag="menu"
     )
     if not success:
@@ -406,7 +409,7 @@ async def on_my_channels(
         await message_manager.send_system(
             callback.message.chat.id,
             text,
-            reply_markup=get_channels_view_keyboard(lang),
+            reply_markup=get_channels_view_keyboard(lang, has_bonus_channel=has_bonus),
             tag="menu"
         )
 

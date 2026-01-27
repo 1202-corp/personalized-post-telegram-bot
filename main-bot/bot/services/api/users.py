@@ -15,18 +15,41 @@ class UserService(BaseAPIClient):
         telegram_id: int,
         username: Optional[str] = None,
         first_name: Optional[str] = None,
-        last_name: Optional[str] = None
+        last_name: Optional[str] = None,
+        language_code: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
-        """Get or create a user."""
+        """
+        Get or create a user.
+        
+        Args:
+            telegram_id: Telegram user ID
+            username: Telegram username
+            first_name: User's first name
+            last_name: User's last name
+            language_code: Telegram language code (e.g., "ru", "en") - will be converted to locale
+        """
+        from bot.core.i18n import normalize_telegram_language, get_supported_languages, get_default_language
+        
+        # Convert Telegram language_code to locale if provided
+        language = None
+        if language_code:
+            supported = get_supported_languages()
+            default = get_default_language()
+            language = normalize_telegram_language(language_code, supported, default)
+        
         try:
+            json_data = {
+                "telegram_id": telegram_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+            }
+            if language:
+                json_data["language"] = language
+            
             response = await self.client.post(
                 f"{self.base_url}/api/v1/users/",
-                json={
-                    "telegram_id": telegram_id,
-                    "username": username,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                }
+                json=json_data
             )
             response.raise_for_status()
             return response.json()

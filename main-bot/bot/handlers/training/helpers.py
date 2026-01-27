@@ -5,12 +5,12 @@ import logging
 from datetime import datetime, timedelta
 
 from aiogram.fsm.context import FSMContext
+from aiogram.enums import ParseMode
 
 from bot.core import MessageManager, get_texts, get_settings
 from bot.core.states import TrainingStates
 from bot.services import get_core_api, get_user_bot
 from bot.services.media_service import MediaService
-from bot.services.nudge_service import NudgeService
 import html
 from bot.utils import TELEGRAM_CAPTION_LIMIT
 from bot.core import (
@@ -23,7 +23,6 @@ settings = get_settings()
 
 # Initialize services (will be injected via dependency injection in future)
 _media_service: MediaService | None = None
-_nudge_service: NudgeService | None = None
 
 
 def _get_media_service() -> MediaService:
@@ -32,14 +31,6 @@ def _get_media_service() -> MediaService:
     if _media_service is None:
         _media_service = MediaService(get_user_bot())
     return _media_service
-
-
-def _get_nudge_service() -> NudgeService:
-    """Get or create nudge service instance."""
-    global _nudge_service
-    if _nudge_service is None:
-        _nudge_service = NudgeService()
-    return _nudge_service
 
 
 async def _get_user_lang(user_id: int) -> str:
@@ -54,22 +45,7 @@ async def _start_training_session(
     message_manager: MessageManager,
     state: FSMContext,
 ) -> None:
-    """Initialize per-session nudge watcher and show the first training post."""
-    # Bump session id to invalidate previous watchers
-    session_id = f"{user_id}-{int(datetime.utcnow().timestamp() * 1000)}"
-    await state.update_data(
-        nudge_session_id=session_id,
-    )
-
-    # Get user language for nudge service
-    lang = await _get_user_lang(user_id)
-    
-    # Start nudge watcher using service
-    nudge_service = _get_nudge_service()
-    await nudge_service.start_training_watcher(
-        chat_id, user_id, message_manager, state, session_id, lang
-    )
-    
+    """Initialize and show the first training post."""
     # Start background prefetch of ALL posts while showing first one
     data = await state.get_data()
     posts = data.get("training_posts", [])
@@ -121,7 +97,12 @@ async def _bonus_channel_nudge_watcher(
 
 
 async def show_training_post(chat_id: int, message_manager: MessageManager, state: FSMContext):
-    """Display current training post for rating."""
+    """Display current training post for rating.
+    
+    Sends two messages:
+    1. Regular message - post content (text/media) without buttons
+    2. Temporary message - progress text + rating buttons
+    """
     from aiogram.types import InputMediaPhoto, BufferedInputFile
     
     data = await state.get_data()
@@ -136,33 +117,34 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     
     post = posts[index]
     
-    # Format post text (escape user content for HTML)
-    channel_title = html.escape(post.get("channel_title", "Unknown Channel"))
-    full_text_raw = post.get("text") or ""
-    post_text = html.escape(full_text_raw)
-    channel_username = post.get("channel_username", "").lstrip("@")
-    msg_id = post.get("telegram_message_id")
-    
     # Get user language for localized texts
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    # Build post text with hyperlink to original (HTML format)
+    # Format post text (convert MarkdownV2 to HTML)
+    from bot.utils import markdown_v2_to_html
+    channel_title = html.escape(post.get("channel_title", "Unknown Channel"))
+    full_text_raw = post.get("text") or ""
+    post_text = markdown_v2_to_html(full_text_raw)
+    channel_username = post.get("channel_username", "").lstrip("@")
+    msg_id = post.get("telegram_message_id")
+    
+    # Build post text with hyperlink to original (HTML format) - WITHOUT progress info
     text = f"📰 <b>{texts.get('post_label', default='Post')} {index + 1}/{len(posts)}</b>\n"
     if channel_username and msg_id:
         text += f"{texts.get('from_label', default='From')}: <a href=\"https://t.me/{channel_username}/{msg_id}\">{channel_title}</a>\n\n"
     else:
         text += f"{texts.get('from_label', default='From')}: {channel_title}\n\n"
     text += post_text if post_text else "<i>[Media content]</i>"
-    caption_fits = len(text) <= TELEGRAM_CAPTION_LIMIT
-    sent_with_caption = False
-    media_message_ids: list[int] = []
+    # Telegram counts caption length without HTML tags
+    from bot.utils import get_html_text_length
+    caption_fits = get_html_text_length(text) <= TELEGRAM_CAPTION_LIMIT
+    post_message_id = None
 
-    # First send media if available (photo or video)
+    # Send post as REGULAR message (text/media only, no buttons)
     media_type = post.get("media_type")
     if media_type == "photo":
         media_ids_str = post.get("media_file_id") or ""
-
         media_ids: list[int] = []
         if media_ids_str:
             for part in media_ids_str.split(","):
@@ -176,15 +158,13 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
 
         if channel_username and media_ids:
             user_bot = get_user_bot()
-            
-            # Check cache first for ALL photo types
             media_service = _get_media_service()
             cached_photo = await media_service.get_cached_photo(chat_id, post.get("id", 0))
             cached_photos = await media_service.get_cached_photos(chat_id, post.get("id", 0))
             cached = {"photo": cached_photo, "photos": cached_photos} if cached_photo or cached_photos else None
 
             if len(media_ids) > 1:
-                # Album - check cache or download in parallel
+                # Album
                 if cached and cached.get("photos"):
                     photos_data = cached["photos"]
                 else:
@@ -201,20 +181,38 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
                         chat_id=chat_id,
                         media=media_items,
                     )
-                    media_message_ids.extend(m.message_id for m in msgs)
-                    # Send text with buttons separately
-                    from aiogram.types import LinkPreviewOptions
-                    btn_msg = await message_manager.bot.send_message(
+                    # Register all album messages as regular
+                    from bot.core.message_registry import ManagedMessage, MessageType
+                    for msg in msgs:
+                        managed = ManagedMessage(
+                            message_id=msg.message_id,
+                            chat_id=chat_id,
+                            message_type=MessageType.REGULAR,
+                            tag="training_post_content"
+                        )
+                        await message_manager.registry.register(managed)
+                    # Use first message of album for reaction
+                    post_message_id = msgs[0].message_id if msgs else None
+                    # Send text separately as regular message
+                    post_msg = await message_manager.send_regular(
                         chat_id=chat_id,
                         text=text,
-                        parse_mode="MarkdownV2",
-                        reply_markup=get_training_post_keyboard(post.get("id"), lang) if post.get("id") else None,
-                        link_preview_options=LinkPreviewOptions(is_disabled=True),
+                        tag="training_post_content",
                     )
-                    media_message_ids.append(btn_msg.message_id)
-                    sent_with_caption = True
+                    # Use text message for reaction if available, otherwise first photo
+                    if post_msg:
+                        post_message_id = post_msg.message_id
+                else:
+                    # Album failed to load - send text only
+                    post_msg = await message_manager.send_regular(
+                        chat_id=chat_id,
+                        text=text,
+                        tag="training_post_content",
+                    )
+                    if post_msg:
+                        post_message_id = post_msg.message_id
             else:
-                # Single photo - use cache or download
+                # Single photo
                 mid = media_ids[0]
                 if cached and cached.get("photo"):
                     photo_bytes = cached["photo"]
@@ -225,28 +223,57 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
                         photo_bytes = None
                 if photo_bytes:
                     if caption_fits:
-                        await message_manager.delete_temporary(chat_id, tag="training_post")
-                        await message_manager.send_temporary(
-                            chat_id,
-                            text,
-                            reply_markup=get_training_post_keyboard(post.get("id"), lang),
-                            tag="training_post",
+                        post_msg = await message_manager.send_regular(
+                            chat_id=chat_id,
+                            text=text,
                             photo_bytes=photo_bytes,
                             photo_filename=f"{mid}.jpg",
+                            tag="training_post_content",
                         )
-                        sent_with_caption = True
+                        if post_msg:
+                            post_message_id = post_msg.message_id
                     else:
+                        # Photo without caption, text sent separately
                         input_file = BufferedInputFile(photo_bytes, filename=f"{mid}.jpg")
-                        msg = await message_manager.bot.send_photo(
+                        msg = await message_manager.bot.send_photo(chat_id=chat_id, photo=input_file)
+                        # Register photo as regular
+                        from bot.core.message_registry import ManagedMessage, MessageType
+                        managed = ManagedMessage(
+                            message_id=msg.message_id,
                             chat_id=chat_id,
-                            photo=input_file,
+                            message_type=MessageType.REGULAR,
+                            tag="training_post_content"
                         )
-                        media_message_ids.append(msg.message_id)
+                        await message_manager.registry.register(managed)
+                        post_msg = await message_manager.send_regular(
+                            chat_id=chat_id,
+                            text=text,
+                            tag="training_post_content",
+                        )
+                        # Use text message for reaction
+                        if post_msg:
+                            post_message_id = post_msg.message_id
+                else:
+                    # Photo failed to load - send text only
+                    post_msg = await message_manager.send_regular(
+                        chat_id=chat_id,
+                        text=text,
+                        tag="training_post_content",
+                    )
+                    if post_msg:
+                        post_message_id = post_msg.message_id
+        else:
+            # No channel_username or media_ids for photo - send text only
+            post_msg = await message_manager.send_regular(
+                chat_id=chat_id,
+                text=text,
+                tag="training_post_content",
+            )
+            if post_msg:
+                post_message_id = post_msg.message_id
 
     elif media_type == "video" and channel_username and msg_id:
-        # Handle video posts - skip if video fails to load/send
         user_bot = get_user_bot()
-        # Check cache first
         media_service = _get_media_service()
         cached_video = await media_service.get_cached_video(chat_id, post.get("id", 0))
         if cached_video:
@@ -261,62 +288,82 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
             try:
                 input_file = BufferedInputFile(video_bytes, filename=f"{msg_id}.mp4")
                 if caption_fits:
-                    await message_manager.delete_temporary(chat_id, tag="training_post")
                     msg = await message_manager.bot.send_video(
                         chat_id=chat_id,
                         video=input_file,
                         caption=text,
-                        parse_mode="MarkdownV2",
-                        reply_markup=get_training_post_keyboard(post.get("id"), lang),
+                        parse_mode=ParseMode.HTML,
                     )
-                    sent_with_caption = True
-                else:
-                    msg = await message_manager.bot.send_video(
+                    # Register video message as regular
+                    from bot.core.message_registry import ManagedMessage, MessageType
+                    managed = ManagedMessage(
+                        message_id=msg.message_id,
                         chat_id=chat_id,
-                        video=input_file,
+                        message_type=MessageType.REGULAR,
+                        tag="training_post_content"
                     )
-                    media_message_ids.append(msg.message_id)
+                    await message_manager.registry.register(managed)
+                    post_message_id = msg.message_id
+                else:
+                    msg = await message_manager.bot.send_video(chat_id=chat_id, video=input_file)
+                    # Register video as regular
+                    from bot.core.message_registry import ManagedMessage, MessageType
+                    managed = ManagedMessage(
+                        message_id=msg.message_id,
+                        chat_id=chat_id,
+                        message_type=MessageType.REGULAR,
+                        tag="training_post_content"
+                    )
+                    await message_manager.registry.register(managed)
+                    post_msg = await message_manager.send_regular(
+                        chat_id=chat_id,
+                        text=text,
+                        tag="training_post_content",
+                    )
+                    # Use text message for reaction
+                    if post_msg:
+                        post_message_id = post_msg.message_id
             except Exception as e:
-                # Video send failed (timeout, too large, etc.) - skip to next post
                 logger.warning(f"Failed to send video for post {post.get('id')}: {e}")
                 new_index = index + 1
                 await state.update_data(current_post_index=new_index)
                 await show_training_post(chat_id, message_manager, state)
                 return
         else:
-            # Video failed to download - skip to next post
-            logger.warning(f"Failed to download video for post {post.get('id')}, skipping")
-            new_index = index + 1
-            await state.update_data(current_post_index=new_index)
-            await show_training_post(chat_id, message_manager, state)
-            return
+            # Video failed to download - send text only
+            logger.warning(f"Failed to download video for post {post.get('id')}, sending text only")
+            post_msg = await message_manager.send_regular(
+                chat_id=chat_id,
+                text=text,
+                tag="training_post_content",
+            )
+            if post_msg:
+                post_message_id = post_msg.message_id
 
-    # Send text-only ephemeral (will be replaced by next post) when not already sent as caption
-    if not sent_with_caption:
-        await message_manager.delete_temporary(chat_id, tag="training_post")
-        await message_manager.send_temporary(
-            chat_id,
-            text,
-            reply_markup=get_training_post_keyboard(post.get("id"), lang),
-            tag="training_post",
-            disable_link_preview=True,
+    # Send text-only post as regular message if not already sent
+    if post_message_id is None:
+        post_msg = await message_manager.send_regular(
+            chat_id=chat_id,
+            text=text,
+            tag="training_post_content",
         )
+        if post_msg:
+            post_message_id = post_msg.message_id
     
-    # Remember media messages for later cleanup on rating
-    await state.update_data(last_media_ids=media_message_ids)
-    
-    # Update system message with progress
+    # Now send temporary message with progress and buttons
     total = len(posts)
     progress_text = texts.get("training_progress", current=index, total=total)
-
-    await message_manager.send_system(
+    await message_manager.send_temporary(
         chat_id,
         progress_text,
-        tag="menu",
+        reply_markup=get_training_post_keyboard(post.get("id"), lang),
+        tag="training_post_controls",
     )
     
-    # Update activity timestamp AFTER message is sent (for accurate nudge timing)
-    await state.update_data(last_activity_ts=datetime.utcnow().timestamp())
+    # Save post message ID for reaction
+    await state.update_data(
+        current_post_message_id=post_message_id,
+    )
     
     # Start background prefetch for next posts
     media_service = _get_media_service()
@@ -343,8 +390,7 @@ async def finish_training_flow(chat_id: int, message_manager: MessageManager, st
         await api.update_user(user_id, status="active", is_trained=True)
     
     # Clean up all training-related messages
-    await message_manager.delete_temporary(chat_id, tag="training_post")
-    await message_manager.delete_temporary(chat_id, tag="training_nudge")
+    await message_manager.delete_temporary(chat_id, tag="training_post_controls")
     await message_manager.delete_temporary(chat_id, tag="bonus_nudge")
     await message_manager.delete_temporary(chat_id, tag="miniapp_choice")
     
@@ -461,11 +507,12 @@ async def send_initial_best_post(
         initial_best_post = all_posts[0]
 
     # Send this post similarly to feed posts (with rating buttons)
+    from bot.utils import markdown_v2_to_html
     channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
     channel_username = (initial_best_post.get("channel_username") or "").lstrip("@")
     msg_id = initial_best_post.get("telegram_message_id")
     full_text_raw = initial_best_post.get("text") or ""
-    text = html.escape(full_text_raw)
+    text = markdown_v2_to_html(full_text_raw)
     score = initial_best_post.get("relevance_score", 0)
 
     # Build header with link to original post (HTML format)
@@ -476,7 +523,9 @@ async def send_initial_best_post(
     body = text if text else "<i>[Media content]</i>"
     post_text = header + body
 
-    caption_fits = len(post_text) <= TELEGRAM_CAPTION_LIMIT
+    # Telegram counts caption length without HTML tags
+    from bot.utils import get_html_text_length
+    caption_fits = get_html_text_length(post_text) <= TELEGRAM_CAPTION_LIMIT
     sent_with_caption = False
 
     if initial_best_post.get("media_type") == "photo":

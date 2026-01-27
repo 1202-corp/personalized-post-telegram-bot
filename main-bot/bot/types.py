@@ -64,9 +64,6 @@ class TrainingState(TypedDict, total=False):
     user_id: int
     is_bonus_training: bool
     is_retrain: bool
-    nudge_session_id: Optional[str]
-    last_activity_ts: Optional[float]
-    nudge_stage: int
     channel_usernames: List[str]
 
 
