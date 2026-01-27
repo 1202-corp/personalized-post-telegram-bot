@@ -135,18 +135,16 @@ async def on_view_feed(
 
     # Send remaining feed posts
     for post in feed_posts:
-        # Format post text with hyperlink (HTML)
+        # Format post text with hyperlink (HTML). Assume post['text'] is already HTML.
         channel_title = html.escape(post.get("channel_title", "Unknown"))
         channel_username = post.get("channel_username", "").lstrip("@")
         message_id = post.get("telegram_message_id")
-        full_text_raw = post.get("text") or ""
-        text = full_text_raw  # Already HTML formatted from user-bot
+        body = post.get("text") or "<i>[Media content]</i>"
         
         if channel_username and message_id:
             header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"
         else:
             header = f"📰 <b>{channel_title}</b>\n\n"
-        body = text if text else "<i>[Media content]</i>"
         post_text = header + body
         
         # Update post dict with formatted text for post_service

@@ -82,7 +82,6 @@ async def on_start_training(
     """Handle Start Training button - scrape posts and show MiniApp/chat choice."""
     await message_manager.send_toast(callback)
     api = get_core_api()
-    user_bot = get_user_bot()
     user_id = callback.from_user.id
     await api.update_activity(user_id)
     await api.create_log(user_id, "start_training_clicked")
@@ -169,13 +168,9 @@ async def on_confirm_training(
         tag="menu"
     )
     
+    # Build list of channels to use for training (defaults + user channels)
     default_channels = settings.default_training_channels.split(",")
-    # Use set to avoid duplicates
-    channels_set = set()
-    for ch in default_channels:
-        ch_clean = ch.strip().lstrip("@").lower()
-        if ch_clean:
-            channels_set.add(ch_clean)
+    channels_to_use = [ch.strip() for ch in default_channels if ch.strip()]
     
     # Add default channels to user's channel list if not already added
     # This ensures users keep their training channels even if defaults change in .env
@@ -192,23 +187,14 @@ async def on_confirm_training(
     
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
-        username = ch.get("username")
-        if username:
-            channels_set.add(username.lower())
+        if ch.get("username"):
+            channels_to_use.append(f"@{ch['username']}")
     
-    channels_to_scrape = [f"@{ch}" for ch in channels_set]
-    
-    scrape_tasks = []
-    for channel in channels_to_scrape[:3]:
-        task = user_bot.scrape_channel(channel, limit=settings.posts_per_channel)
-        scrape_tasks.append(task)
-    
-    await asyncio.gather(*scrape_tasks, return_exceptions=True)
-    
+    # Request recent posts for training from API (without pulling media here)
     posts = await api.get_training_posts(
         user_id,
-        channels_to_scrape[:3],
-        settings.posts_per_channel
+        channels_to_use,
+        settings.training_recent_posts_per_channel,
     )
     
     if not posts:
@@ -222,12 +208,27 @@ async def on_confirm_training(
         )
         return
     
+    # Build training pool of N posts according to env limits
+    max_pool_size = (
+        settings.training_base_posts_count
+        + settings.training_max_extra_from_dislike
+        + settings.training_max_extra_from_skip
+    )
+    from random import sample
+    pool_size = min(len(posts), settings.training_recent_posts_per_channel, max_pool_size)
+    training_posts = sample(posts, pool_size) if len(posts) > pool_size else posts
+    
     await state.update_data(
         user_id=user_id,
-        training_posts=posts,
+        training_posts=training_posts,
         current_post_index=0,
         rated_count=0,
-        last_media_ids=[],
+        training_queue=list(range(len(training_posts))),
+        likes_count=0,
+        dislikes_count=0,
+        skips_count=0,
+        extra_from_dislike_used=0,
+        extra_from_skip_used=0,
     )
     await state.set_state(TrainingStates.rating_posts)
     

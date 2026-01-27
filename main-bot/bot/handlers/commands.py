@@ -75,14 +75,16 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     is_trained = user_data.get("is_trained", False)
     name = html.escape(user.first_name or "there")
     
-    # Check if user has completed training
-    # Training is considered complete if status is "trained" or "active"
-    training_complete = status in ["trained", "active"] or is_trained
+    # Training is considered complete only if status is not in new/onboarding/training
+    training_complete = status not in ["new", "onboarding", "training"] and is_trained
     
     if not training_complete:
-        # User hasn't completed training - show base welcome message
-        if status == "new":
+        # User hasn't completed training - treat as guest
+        if status in ["new", "onboarding"]:
             await api.update_user(user.id, status="onboarding")
+        else:
+            # If user somehow in training, reset to onboarding on /start
+            await api.update_user(user.id, status="onboarding", is_trained=False)
         await message_manager.send_system(
             message.chat.id,
             texts.get("welcome", name=name),
@@ -172,6 +174,62 @@ async def cmd_reset(message: Message, message_manager: MessageManager):
         "🧹 Chat cleaned up! Use /start to begin again.",
         tag="menu"
     )
+
+
+@router.callback_query(F.data == "delete_account")
+async def on_delete_account(
+    callback: CallbackQuery,
+    message_manager: MessageManager
+):
+    """Ask user to confirm account deletion."""
+    await message_manager.send_toast(callback)
+    lang = await _get_user_lang(callback.from_user.id)
+    texts = get_texts(lang)
+    from bot.core import get_confirm_keyboard
+    await message_manager.send_temporary(
+        callback.message.chat.id,
+        texts.get("delete_account_confirm", default="Are you sure you want to delete your account? This cannot be undone."),
+        reply_markup=get_confirm_keyboard("delete_account", lang),
+        tag="delete_account_confirm"
+    )
+
+
+@router.callback_query(F.data == "confirm:delete_account")
+async def on_confirm_delete_account(
+    callback: CallbackQuery,
+    message_manager: MessageManager
+):
+    """Handle confirmed account deletion."""
+    api = get_core_api()
+    user_id = callback.from_user.id
+    await api.delete_user(user_id, hard=False)
+    # Clean up temporary messages
+    await message_manager.delete_temporary(callback.message.chat.id)
+    # Clear chat system messages
+    await message_manager.cleanup_chat(callback.message.chat.id, include_system=True, include_regular=False)
+    # Show guest /start menu again
+    lang = await _get_user_lang(user_id)
+    texts = get_texts(lang)
+    name = html.escape(callback.from_user.first_name or "there")
+    await message_manager.send_system(
+        callback.message.chat.id,
+        texts.get("welcome", name=name),
+        reply_markup=get_start_keyboard(lang),
+        tag="menu",
+        is_start=True
+    )
+
+
+@router.callback_query(F.data == "cancel:delete_account")
+async def on_cancel_delete_account(
+    callback: CallbackQuery,
+    message_manager: MessageManager
+):
+    """Cancel account deletion."""
+    lang = await _get_user_lang(callback.from_user.id)
+    texts = get_texts(lang)
+    await message_manager.send_toast(callback, texts.get("cancelled", default="Cancelled"))
+    await message_manager.delete_temporary(callback.message.chat.id, tag="delete_account_confirm")
 
 
 @router.callback_query(F.data == "cycle_language")

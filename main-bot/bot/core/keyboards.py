@@ -176,6 +176,7 @@ def get_settings_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t.get("settings_btn_retrain", default="🔄 Retrain"), callback_data="retrain")],
+        [InlineKeyboardButton(text=t.get("settings_btn_delete_account", default="🗑️ Delete account"), callback_data="delete_account")],
         [InlineKeyboardButton(text=t.get("settings_btn_language", default="🌐 Language"), callback_data="change_language")],
         [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")],
     ])
