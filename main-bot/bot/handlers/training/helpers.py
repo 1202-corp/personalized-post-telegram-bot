@@ -121,11 +121,10 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    # Format post text (convert MarkdownV2 to HTML)
-    from bot.utils import markdown_v2_to_html
+    # Format post text - already HTML formatted from user-bot
     channel_title = html.escape(post.get("channel_title", "Unknown Channel"))
     full_text_raw = post.get("text") or ""
-    post_text = markdown_v2_to_html(full_text_raw)
+    post_text = full_text_raw  # Already HTML formatted from Telegram
     channel_username = post.get("channel_username", "").lstrip("@")
     msg_id = post.get("telegram_message_id")
     
@@ -507,12 +506,11 @@ async def send_initial_best_post(
         initial_best_post = all_posts[0]
 
     # Send this post similarly to feed posts (with rating buttons)
-    from bot.utils import markdown_v2_to_html
     channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
     channel_username = (initial_best_post.get("channel_username") or "").lstrip("@")
     msg_id = initial_best_post.get("telegram_message_id")
     full_text_raw = initial_best_post.get("text") or ""
-    text = markdown_v2_to_html(full_text_raw)
+    text = full_text_raw  # Already HTML formatted from user-bot
     score = initial_best_post.get("relevance_score", 0)
 
     # Build header with link to original post (HTML format)

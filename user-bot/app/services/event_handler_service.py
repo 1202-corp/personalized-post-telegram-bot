@@ -9,7 +9,7 @@ from datetime import datetime
 from telethon import events
 from telethon.tl.types import Message
 
-from app.core.utils import get_message_markdown
+from app.core.utils import get_message_html
 from app.types import (
     TelethonServiceProtocol,
     SyncServiceProtocol,
@@ -207,7 +207,7 @@ class EventHandlerService:
             main_msg = messages[0]
         
         # Get message text
-        text = get_message_markdown(main_msg)
+        text = get_message_html(main_msg)
         all_ids = [m.id for m in messages]
         media_file_id = ",".join(str(mid) for mid in all_ids)
         
@@ -263,7 +263,7 @@ class EventHandlerService:
         Returns:
             Post data dictionary
         """
-        text = get_message_markdown(message)
+        text = get_message_html(message)
         if hasattr(self.telethon_service, 'get_media_type'):
             media_type = self.telethon_service.get_media_type(message)
         else:

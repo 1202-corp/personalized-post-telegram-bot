@@ -109,7 +109,7 @@ async def on_view_feed(
         channel_username = initial_best_post.get("channel_username", "").lstrip("@")
         message_id = initial_best_post.get("telegram_message_id")
         full_text_raw = initial_best_post.get("text") or ""
-        text = html.escape(full_text_raw)
+        text = full_text_raw  # Already HTML formatted from user-bot
         
         if channel_username and message_id:
             header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"
@@ -140,7 +140,7 @@ async def on_view_feed(
         channel_username = post.get("channel_username", "").lstrip("@")
         message_id = post.get("telegram_message_id")
         full_text_raw = post.get("text") or ""
-        text = html.escape(full_text_raw)
+        text = full_text_raw  # Already HTML formatted from user-bot
         
         if channel_username and message_id:
             header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"

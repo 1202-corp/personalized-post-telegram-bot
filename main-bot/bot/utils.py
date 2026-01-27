@@ -4,24 +4,18 @@ from aiogram.types import BufferedInputFile, InputMediaPhoto, InlineKeyboardMark
 # Telegram caption limit
 TELEGRAM_CAPTION_LIMIT = 1024
 
-_MD_V2_SPECIAL_CHARS = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!', '\\']
+import html as html_module
 
 
 def escape_md(text: str | None) -> str:
-    """Escape user-provided text for MarkdownV2 parse mode.
+    """Escape user-provided text for HTML parse mode.
 
-    We keep our own formatting (headers, bold, etc.) in templates
-    and only apply this to dynamic values (user names, channel titles,
-    post bodies, usernames) to avoid 'can't parse entities' errors.
+    Only escapes <, >, & for HTML. Does NOT escape post text
+    which already contains HTML formatting from Telegram.
     """
     if not text:
         return ""
-    result = str(text)
-    # Escape backslash first to avoid double-escaping
-    result = result.replace('\\', '\\\\')
-    for ch in _MD_V2_SPECIAL_CHARS[:-1]:  # Skip backslash, already done
-        result = result.replace(ch, f'\\{ch}')
-    return result
+    return html_module.escape(str(text))
 
 
 def escape_md_preserve_formatting(text: str | None) -> str:
@@ -317,7 +311,7 @@ def format_post_text(
     import html
     channel_title = html.escape(post.get("channel_title", "Unknown"))
     full_text_raw = post.get("text") or ""
-    text = html.escape(full_text_raw)
+    text = full_text_raw  # Already HTML formatted from user-bot, don't escape
     
     header = f"📰 <b>{channel_title}</b>\n"
     
