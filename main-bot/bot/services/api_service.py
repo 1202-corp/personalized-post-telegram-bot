@@ -36,6 +36,7 @@ class CoreAPIClient:
     
     # Delegate methods for backward compatibility
     async def get_or_create_user(self, *args, **kwargs):
+        """Get or create user with language support."""
         return await self.users.get_or_create_user(*args, **kwargs)
     
     async def get_user(self, *args, **kwargs):

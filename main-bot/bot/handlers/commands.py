@@ -72,11 +72,17 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     
     # Check user status and route accordingly
     status = user_data.get("status", "new")
+    is_trained = user_data.get("is_trained", False)
     name = html.escape(user.first_name or "there")
     
-    if status in ["new", "onboarding"]:
-        # Show onboarding
-        await api.update_user(user.id, status="onboarding")
+    # Check if user has completed training
+    # Training is considered complete if status is "trained" or "active"
+    training_complete = status in ["trained", "active"] or is_trained
+    
+    if not training_complete:
+        # User hasn't completed training - show base welcome message
+        if status == "new":
+            await api.update_user(user.id, status="onboarding")
         await message_manager.send_system(
             message.chat.id,
             texts.get("welcome", name=name),
@@ -84,31 +90,13 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             tag="menu",
             is_start=True
         )
-    elif status == "training":
-        # Resume training
-        await message_manager.send_system(
-            message.chat.id,
-            texts.get("resume_training"),
-            reply_markup=get_start_keyboard(lang),
-            tag="menu",
-            is_start=True
-        )
-    elif status in ["trained", "active"]:
-        # Show main feed
+    else:
+        # User has completed training - show main menu
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
         await message_manager.send_system(
             message.chat.id,
             texts.get("welcome_back", name=name),
             reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
-            tag="menu",
-            is_start=True
-        )
-    else:
-        # Default to onboarding
-        await message_manager.send_system(
-            message.chat.id,
-            texts.get("welcome", name=name),
-            reply_markup=get_start_keyboard(lang),
             tag="menu",
             is_start=True
         )

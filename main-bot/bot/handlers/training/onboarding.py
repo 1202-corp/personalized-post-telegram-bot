@@ -164,6 +164,19 @@ async def on_confirm_training(
     default_channels = settings.default_training_channels.split(",")
     channels_to_scrape = [ch.strip() for ch in default_channels]
     
+    # Add default channels to user's channel list if not already added
+    # This ensures users keep their training channels even if defaults change in .env
+    for default_channel in default_channels:
+        channel_username = default_channel.strip().lstrip("@")
+        if channel_username:
+            # Try to add as training channel (will be ignored if already exists)
+            await api.channels.add_user_channel(
+                user_id,
+                channel_username,
+                is_for_training=True,
+                is_bonus=False
+            )
+    
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
         if ch.get("username"):
@@ -193,15 +206,12 @@ async def on_confirm_training(
         )
         return
     
-    from datetime import datetime
     await state.update_data(
         user_id=user_id,
         training_posts=posts,
         current_post_index=0,
         rated_count=0,
         last_media_ids=[],
-        last_activity_ts=datetime.utcnow().timestamp(),
-        nudge_stage=0,
     )
     await state.set_state(TrainingStates.rating_posts)
     
@@ -323,22 +333,38 @@ async def on_skip_add_channel(
 @router.callback_query(F.data == "back_to_start")
 async def on_back_to_start(
     callback: CallbackQuery,
-    message_manager: MessageManager
+    message_manager: MessageManager,
+    state: FSMContext
 ):
     """Go back to start menu."""
     await message_manager.send_toast(callback)
+    
+    # Clear training state if in training
+    await state.clear()
+    
+    # Delete temporary messages
+    await message_manager.delete_temporary(callback.message.chat.id, tag="training_post_controls")
     
     lang = await _get_user_lang(callback.from_user.id)
     texts = get_texts(lang)
     name = html.escape(callback.from_user.first_name or "there")
     
-    try:
-        await callback.message.edit_text(
+    # Use edit_system to ensure temporary messages are deleted
+    from bot.core import get_start_keyboard
+    success = await message_manager.edit_system(
+        callback.message.chat.id,
+        texts.get("welcome", name=name),
+        reply_markup=get_start_keyboard(lang),
+        tag="menu"
+    )
+    if not success:
+        # Fallback to send_system if edit fails
+        await message_manager.send_system(
+            callback.message.chat.id,
             texts.get("welcome", name=name),
             reply_markup=get_start_keyboard(lang),
+            tag="menu"
         )
-    except Exception:
-        pass
 
 
 @router.callback_query(F.data == "back_to_onboarding")

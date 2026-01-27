@@ -43,6 +43,19 @@ async def start_full_retrain(
     default_channels = settings.default_training_channels.split(",")
     channels_to_scrape = [ch.strip() for ch in default_channels]
 
+    # Add default channels to user's channel list if not already added
+    # This ensures users keep their training channels even if defaults change in .env
+    for default_channel in default_channels:
+        channel_username = default_channel.strip().lstrip("@")
+        if channel_username:
+            # Try to add as training channel (will be ignored if already exists)
+            await api.channels.add_user_channel(
+                user_id,
+                channel_username,
+                is_for_training=True,
+                is_bonus=False
+            )
+
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
         if ch.get("username"):
@@ -158,8 +171,6 @@ async def on_confirm_bonus_training(
         current_post_index=0,
         rated_count=0,
         last_media_ids=[],
-        last_activity_ts=datetime.utcnow().timestamp(),
-        nudge_stage=0,
         is_bonus_training=True,
     )
     await state.set_state(TrainingStates.rating_posts)
@@ -185,6 +196,19 @@ async def on_confirm_retrain(
 
     default_channels = settings.default_training_channels.split(",")
     channels_to_scrape = [ch.strip() for ch in default_channels]
+
+    # Add default channels to user's channel list if not already added
+    # This ensures users keep their training channels even if defaults change in .env
+    for default_channel in default_channels:
+        channel_username = default_channel.strip().lstrip("@")
+        if channel_username:
+            # Try to add as training channel (will be ignored if already exists)
+            await api.channels.add_user_channel(
+                user_id,
+                channel_username,
+                is_for_training=True,
+                is_bonus=False
+            )
 
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
@@ -212,8 +236,6 @@ async def on_confirm_retrain(
         current_post_index=0,
         rated_count=0,
         last_media_ids=[],
-        last_activity_ts=datetime.utcnow().timestamp(),
-        nudge_stage=0,
         is_retrain=True,
     )
     await state.set_state(TrainingStates.rating_posts)

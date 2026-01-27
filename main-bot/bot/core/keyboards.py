@@ -105,14 +105,15 @@ def get_add_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
 
 
 def get_training_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardMarkup:
-    """Keyboard for rating a training post."""
+    """Keyboard for rating a training post with progress."""
     t = get_texts(lang)
     buttons = [
         [
-            InlineKeyboardButton(text=t.get("training_btn_like", default="👍"), callback_data=f"rate:like:{post_id}"),
-            InlineKeyboardButton(text=t.get("training_btn_dislike", default="👎"), callback_data=f"rate:dislike:{post_id}"),
+            InlineKeyboardButton(text="👍", callback_data=f"rate:like:{post_id}"),
+            InlineKeyboardButton(text="⏭️", callback_data=f"rate:skip:{post_id}"),
+            InlineKeyboardButton(text="👎", callback_data=f"rate:dislike:{post_id}"),
         ],
-        [InlineKeyboardButton(text=t.get("training_btn_skip", default="⏭️ Skip"), callback_data=f"rate:skip:{post_id}")],
+        [InlineKeyboardButton(text=t.get("settings_btn_back", default="◀ Back"), callback_data="back_to_start")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -215,12 +216,14 @@ def get_add_bonus_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     ])
 
 
-def get_channels_view_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
-    """Keyboard for viewing user's channels with back button."""
+def get_channels_view_keyboard(lang: str = "en_US", has_bonus_channel: bool = False) -> InlineKeyboardMarkup:
+    """Keyboard for viewing user's channels with add channel and back to feed buttons."""
     t = get_texts(lang)
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_settings")],
-    ])
+    buttons = []
+    if not has_bonus_channel:
+        buttons.append([InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")])
+    buttons.append([InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_retrain_keyboard(lang: str = "en_US", user_id: int = None, channels: list = None) -> InlineKeyboardMarkup:

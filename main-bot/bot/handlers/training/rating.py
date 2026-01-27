@@ -1,7 +1,6 @@
 """Rating handlers for training flow."""
 
 import logging
-from datetime import datetime
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
@@ -51,16 +50,25 @@ async def on_rate_post(
         await api.create_interaction(user_id, post_id, action)
         await api.create_log(user_id, f"post_{action}", f"post_id={post_id}")
 
-    await message_manager.delete_temporary(callback.message.chat.id, tag="training_nudge")
-
     data = await state.get_data()
-    last_media_ids = data.get("last_media_ids", []) or []
-    for mid in last_media_ids:
-        try:
-            await message_manager.bot.delete_message(callback.message.chat.id, mid)
-        except Exception:
-            pass
-    await message_manager.delete_temporary(callback.message.chat.id, tag="training_post")
+    
+    # Set reaction on the regular post message
+    post_message_id = data.get("current_post_message_id")
+    if post_message_id:
+        reaction_emoji = "👍" if action == "like" else "👎" if action == "dislike" else "⏭️" if action == "skip" else None
+        if reaction_emoji:
+            try:
+                from aiogram.types import ReactionTypeEmoji
+                await message_manager.bot.set_message_reaction(
+                    chat_id=callback.message.chat.id,
+                    message_id=post_message_id,
+                    reaction=[ReactionTypeEmoji(emoji=reaction_emoji)]
+                )
+            except Exception as e:
+                logger.warning(f"Failed to set reaction on post message: {e}")
+    
+    # Delete temporary message with controls (post content is regular message, stays)
+    await message_manager.delete_temporary(callback.message.chat.id, tag="training_post_controls")
     
     new_index = data.get("current_post_index", 0) + 1
     rated_count = data.get("rated_count", 0) + (1 if action != "skip" else 0)
@@ -68,8 +76,7 @@ async def on_rate_post(
     await state.update_data(
         current_post_index=new_index,
         rated_count=rated_count,
-        last_media_ids=[],
-        last_activity_ts=datetime.utcnow().timestamp(),
+        current_post_message_id=None,
     )
     
     await show_training_post(callback.message.chat.id, message_manager, state)
@@ -83,6 +90,5 @@ async def on_finish_training(
 ):
     """Finish training and trigger ML model."""
     await message_manager.send_toast(callback, "🎯 Finishing training...")
-    await message_manager.delete_temporary(callback.message.chat.id, tag="training_nudge")
     await finish_training_flow(callback.message.chat.id, message_manager, state)
 

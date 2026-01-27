@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import List
 
 
 class Settings(BaseSettings):
@@ -23,6 +24,12 @@ class Settings(BaseSettings):
     
     # Localization (using locale format: language_COUNTRY)
     default_language: str = "en_US"
+    supported_languages: str = "en_US,ru_RU"  # Comma-separated list of supported locales
+    
+    @property
+    def supported_languages_list(self) -> List[str]:
+        """Get supported languages as a list."""
+        return [lang.strip() for lang in self.supported_languages.split(",") if lang.strip()]
     
     class Config:
         env_file = ".env"
