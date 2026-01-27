@@ -18,7 +18,7 @@ from telethon.errors import (
 )
 
 from app.core.config import get_settings
-from app.core.utils import get_message_markdown
+from app.core.utils import get_message_html
 from app.types import ChannelInfo, ScrapeResult, PostDataDict, TelethonServiceProtocol
 
 logger = logging.getLogger(__name__)
@@ -293,7 +293,7 @@ class TelethonService:
                 continue  # skip pure-media posts without caption
             
             # Get message text
-            text = get_message_markdown(msg)
+            text = get_message_html(msg)
             
             posts.append({
                 "telegram_message_id": msg.id,
@@ -330,7 +330,7 @@ class TelethonService:
                 continue
             
             # Get message text
-            text = get_message_markdown(main)
+            text = get_message_html(main)
             # Collect all message IDs in the album for later media group sending
             all_ids = sorted({m.id for m in group_messages})
             media_file_id = ",".join(str(mid) for mid in all_ids)
