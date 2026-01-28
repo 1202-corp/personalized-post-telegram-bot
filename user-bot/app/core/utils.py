@@ -13,13 +13,18 @@ def _utf16_offset_to_python(text: str, utf16_offset: int) -> int:
     
     Telegram uses UTF-16 code units for entity offsets.
     Python strings use Unicode code points.
+    Characters outside BMP (like emoji) use 2 UTF-16 code units (surrogate pairs).
     """
-    encoded = text.encode('utf-16-le')
-    # Each UTF-16 code unit is 2 bytes
-    byte_offset = utf16_offset * 2
-    if byte_offset > len(encoded):
-        byte_offset = len(encoded)
-    return len(encoded[:byte_offset].decode('utf-16-le'))
+    utf16_pos = 0
+    for i, char in enumerate(text):
+        if utf16_pos >= utf16_offset:
+            return i
+        # Characters outside BMP (code point > 0xFFFF) use 2 UTF-16 code units
+        if ord(char) > 0xFFFF:
+            utf16_pos += 2
+        else:
+            utf16_pos += 1
+    return len(text)
 
 
 def get_message_html(message: "Message") -> str:
@@ -56,11 +61,13 @@ def get_message_html(message: "Message") -> str:
         end = _utf16_offset_to_python(text, end_utf16)
         last_end = _utf16_offset_to_python(text, last_end_utf16)
         
-        # Skip if this entity starts before our last position (overlapping)
+        # Handle overlapping entities - skip but don't lose text
         if start < last_end:
+            # Entity overlaps with previous one, skip formatting but track position
+            # The text is already included in the previous entity
             continue
         
-        # Add escaped text before this entity
+        # Add escaped text before this entity (gap between entities)
         if start > last_end:
             result.append(html.escape(text[last_end:start]))
         

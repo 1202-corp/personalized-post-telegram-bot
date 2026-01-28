@@ -4,5 +4,6 @@ uvicorn[standard]==0.27.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 httpx==0.26.0
+Pillow==10.2.0
 # cryptg==0.4.0  # Optional: speeds up crypto but requires gcc (slow build)
 redis==5.0.1
