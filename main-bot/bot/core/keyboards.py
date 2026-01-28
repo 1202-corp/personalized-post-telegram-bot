@@ -166,6 +166,7 @@ def get_feed_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardM
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text=t.get("feed_post_btn_like", default="👍"), callback_data=f"feed:like:{post_id}"),
+            InlineKeyboardButton(text=t.get("feed_post_btn_skip", default="⏭"), callback_data=f"feed:skip:{post_id}"),
             InlineKeyboardButton(text=t.get("feed_post_btn_dislike", default="👎"), callback_data=f"feed:dislike:{post_id}"),
         ],
     ])

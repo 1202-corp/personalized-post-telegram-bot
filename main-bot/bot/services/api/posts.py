@@ -85,4 +85,16 @@ class PostService(BaseAPIClient):
         except Exception as e:
             logger.error(f"Error getting user interactions: {e}")
             return []
+    
+    async def get_post(self, post_id: int) -> Dict[str, Any] | None:
+        """Get post by ID."""
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/api/v1/posts/{post_id}"
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error getting post {post_id}: {e}")
+            return None
 

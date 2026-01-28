@@ -174,7 +174,7 @@ async def on_feed_interaction(
     callback: CallbackQuery,
     message_manager: MessageManager
 ):
-    """Handle feed post interactions (like/dislike)."""
+    """Handle feed post interactions (like/dislike/skip)."""
     callback_key = f"{callback.from_user.id}:{callback.message.message_id}"
     if callback_key in _processed_feed_callbacks:
         await message_manager.send_toast(callback)
@@ -187,19 +187,43 @@ async def on_feed_interaction(
     _, action, post_id = callback.data.split(":")
     post_id = int(post_id)
     
-    await message_manager.send_toast(callback, "👍" if action == "like" else "👎")
+    # Show toast based on action
+    if action == "like":
+        await message_manager.send_toast(callback, "👍")
+    elif action == "dislike":
+        await message_manager.send_toast(callback, "👎")
+    else:
+        await message_manager.send_toast(callback, "⏭")
     
     api = get_core_api()
     user_id = callback.from_user.id
+    chat_id = callback.message.chat.id
     
     await api.update_activity(user_id)
-    await api.create_interaction(user_id, post_id, action)
-    await api.create_log(user_id, f"feed_post_{action}", f"post_id={post_id}")
     
-    # Update button to show it was rated
-    await message_manager.edit_reply_markup(
-        callback.message.chat.id,
-        callback.message.message_id,
-        reply_markup=None  # Remove buttons after rating
-    )
+    # Only create interaction for like/dislike, not skip
+    if action != "skip":
+        await api.create_interaction(user_id, post_id, action)
+        await api.create_log(user_id, f"feed_post_{action}", f"post_id={post_id}")
+    
+    # Delete the 👆 message with buttons
+    try:
+        await message_manager.bot.delete_message(chat_id, callback.message.message_id)
+    except Exception:
+        pass
+    
+    # Set reaction on the post (message before this one)
+    # The post message_id is one less than the buttons message_id
+    post_message_id = callback.message.message_id - 1
+    if action != "skip":
+        try:
+            from aiogram.types import ReactionTypeEmoji
+            reaction = ReactionTypeEmoji(emoji="👍" if action == "like" else "👎")
+            await message_manager.bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=post_message_id,
+                reaction=[reaction]
+            )
+        except Exception as e:
+            logger.debug(f"Could not set reaction: {e}")
 
