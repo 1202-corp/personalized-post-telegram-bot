@@ -90,7 +90,7 @@ async def on_add_bonus_channel(
     # Use edit_system to ensure temporary messages are deleted
     success = await message_manager.edit_system(
         callback.message.chat.id,
-        texts.get("add_bonus_channel_prompt"),
+        texts.get("add_channel_prompt"),
         reply_markup=get_add_channel_keyboard(lang),
         tag="menu"
     )
@@ -98,7 +98,7 @@ async def on_add_bonus_channel(
         # Fallback to send_system if edit fails
         await message_manager.send_system(
             callback.message.chat.id,
-            texts.get("add_bonus_channel_prompt"),
+            texts.get("add_channel_prompt"),
             reply_markup=get_add_channel_keyboard(lang),
             tag="menu"
         )

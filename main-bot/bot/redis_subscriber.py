@@ -71,11 +71,11 @@ class RedisSubscriber:
     
     async def _connect_and_subscribe(self):
         """Connect to Redis and subscribe to channels."""
+        # No socket_timeout for pub/sub - it needs to wait indefinitely for messages
         self._redis = aioredis.from_url(
             self.redis_url,
             decode_responses=True,
-            socket_connect_timeout=5,
-            socket_timeout=5,
+            socket_connect_timeout=10,
         )
         
         self._pubsub = self._redis.pubsub()
@@ -86,24 +86,31 @@ class RedisSubscriber:
             await self._pubsub.subscribe(*channels)
             logger.info(f"Subscribed to channels: {channels}")
         
-        # Listen for messages
-        async for message in self._pubsub.listen():
-            if not self._running:
-                break
-            
-            if message["type"] == "message":
-                channel = message["channel"]
-                data = message["data"]
-                
-                try:
-                    parsed_data = json.loads(data) if isinstance(data, str) else data
-                except json.JSONDecodeError:
-                    logger.error(f"Invalid JSON from channel {channel}: {data}")
+        # Listen for messages with get_message to avoid blocking
+        while self._running:
+            try:
+                message = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message is None:
                     continue
                 
-                handler = self._handlers.get(channel)
-                if handler:
+                if message["type"] == "message":
+                    channel = message["channel"]
+                    data = message["data"]
+                    
                     try:
-                        await handler(parsed_data)
-                    except Exception as e:
-                        logger.error(f"Handler error for channel {channel}: {e}", exc_info=True)
+                        parsed_data = json.loads(data) if isinstance(data, str) else data
+                    except json.JSONDecodeError:
+                        logger.error(f"Invalid JSON from channel {channel}: {data}")
+                        continue
+                    
+                    handler = self._handlers.get(channel)
+                    if handler:
+                        try:
+                            await handler(parsed_data)
+                        except Exception as e:
+                            logger.error(f"Handler error for channel {channel}: {e}", exc_info=True)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"Error getting message: {e}")
+                await asyncio.sleep(0.1)
