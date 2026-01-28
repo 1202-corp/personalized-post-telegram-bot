@@ -608,7 +608,7 @@ async def send_initial_best_post(
                         chat_id=chat_id,
                         video=input_file,
                         caption=post_text,
-                        parse_mode="MarkdownV2",
+                        parse_mode=ParseMode.HTML,
                         reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                     )
                     sent_with_caption = True
@@ -622,7 +622,7 @@ async def send_initial_best_post(
         await message_manager.bot.send_message(
             chat_id=chat_id,
             text=post_text,
-            parse_mode="MarkdownV2",
+            parse_mode=ParseMode.HTML,
             reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
