@@ -27,10 +27,74 @@ def _utf16_offset_to_python(text: str, utf16_offset: int) -> int:
     return len(text)
 
 
+def _apply_nested_formatting(content: str, nested_entities: list, text: str, base_offset: int) -> str:
+    """Apply formatting to nested entities within a parent entity.
+    
+    Args:
+        content: The text content to format
+        nested_entities: List of entities that are nested within the parent
+        text: Full original text (for offset calculations)
+        base_offset: UTF-16 offset of the parent entity start
+        
+    Returns:
+        Formatted content with nested formatting applied
+    """
+    if not nested_entities:
+        return html.escape(content)
+    
+    result = []
+    last_end = 0
+    
+    for entity in nested_entities:
+        entity_type = type(entity).__name__
+        # Calculate relative position within the content
+        rel_start = _utf16_offset_to_python(text, entity.offset) - _utf16_offset_to_python(text, base_offset)
+        rel_end = _utf16_offset_to_python(text, entity.offset + entity.length) - _utf16_offset_to_python(text, base_offset)
+        
+        # Clamp to content bounds
+        rel_start = max(0, min(rel_start, len(content)))
+        rel_end = max(0, min(rel_end, len(content)))
+        
+        if rel_start < last_end or rel_start >= rel_end:
+            continue
+            
+        # Add text before this entity
+        if rel_start > last_end:
+            result.append(html.escape(content[last_end:rel_start]))
+        
+        nested_content = content[rel_start:rel_end]
+        escaped = html.escape(nested_content)
+        
+        # Apply formatting
+        if entity_type == "MessageEntityBold":
+            result.append(f"<b>{escaped}</b>")
+        elif entity_type == "MessageEntityItalic":
+            result.append(f"<i>{escaped}</i>")
+        elif entity_type == "MessageEntityUnderline":
+            result.append(f"<u>{escaped}</u>")
+        elif entity_type == "MessageEntityStrike":
+            result.append(f"<s>{escaped}</s>")
+        elif entity_type == "MessageEntityTextUrl":
+            url = html.escape(entity.url)
+            result.append(f'<a href="{url}">{escaped}</a>')
+        else:
+            result.append(escaped)
+        
+        last_end = rel_end
+    
+    # Add remaining content
+    if last_end < len(content):
+        result.append(html.escape(content[last_end:]))
+    
+    return ''.join(result)
+
+
 def get_message_html(message: "Message") -> str:
     """Get message text with HTML formatting.
     
     Converts Telegram entities to HTML format with proper UTF-16 offset handling.
+    Supports nested entities (e.g., italic text inside a hyperlink).
+    Handles premium/custom emoji by including the text representation.
     
     Args:
         message: Telethon Message object
@@ -44,12 +108,22 @@ def get_message_html(message: "Message") -> str:
     if not entities or not text:
         return html.escape(text)
     
-    # Sort entities by offset (handle nested/overlapping later)
+    # Sort entities by offset, then by length (longer first for nesting)
     sorted_entities = sorted(entities, key=lambda e: (e.offset, -e.length))
+    
+    # Separate "container" entities (can have nested content) from "leaf" entities
+    container_types = {
+        "MessageEntityTextUrl", "MessageEntityBlockquote", "MessageEntitySpoiler"
+    }
+    formatting_types = {
+        "MessageEntityBold", "MessageEntityItalic", "MessageEntityUnderline",
+        "MessageEntityStrike", "MessageEntityCode", "MessageEntityPre"
+    }
     
     # Build result piece by piece using UTF-16 aware indexing
     result = []
     last_end_utf16 = 0
+    processed_ranges = []  # Track which ranges we've already processed
     
     for entity in sorted_entities:
         start_utf16 = entity.offset
@@ -61,10 +135,17 @@ def get_message_html(message: "Message") -> str:
         end = _utf16_offset_to_python(text, end_utf16)
         last_end = _utf16_offset_to_python(text, last_end_utf16)
         
+        # Skip if this range is already processed (nested entity)
+        is_nested = False
+        for (ps, pe) in processed_ranges:
+            if start >= ps and end <= pe and not (start == ps and end == pe):
+                is_nested = True
+                break
+        if is_nested:
+            continue
+        
         # Handle overlapping entities - skip but don't lose text
         if start < last_end:
-            # Entity overlaps with previous one, skip formatting but track position
-            # The text is already included in the previous entity
             continue
         
         # Add escaped text before this entity (gap between entities)
@@ -73,40 +154,62 @@ def get_message_html(message: "Message") -> str:
         
         # Get entity content
         content = text[start:end]
-        escaped_content = html.escape(content)
+        
+        # Find nested entities within this one
+        nested = []
+        for other in sorted_entities:
+            if other is entity:
+                continue
+            other_start = other.offset
+            other_end = other.offset + other.length
+            # Check if other is fully contained within this entity
+            if other_start >= start_utf16 and other_end <= end_utf16:
+                nested.append(other)
         
         # Apply formatting based on entity type
         if entity_type == "MessageEntityBold":
-            result.append(f"<b>{escaped_content}</b>")
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f"<b>{inner}</b>")
         elif entity_type == "MessageEntityItalic":
-            result.append(f"<i>{escaped_content}</i>")
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f"<i>{inner}</i>")
         elif entity_type == "MessageEntityCode":
-            result.append(f"<code>{escaped_content}</code>")
+            result.append(f"<code>{html.escape(content)}</code>")
         elif entity_type == "MessageEntityPre":
             lang = getattr(entity, 'language', '') or ''
             if lang:
-                result.append(f"<pre><code class=\"language-{html.escape(lang)}\">{escaped_content}</code></pre>")
+                result.append(f"<pre><code class=\"language-{html.escape(lang)}\">{html.escape(content)}</code></pre>")
             else:
-                result.append(f"<pre>{escaped_content}</pre>")
+                result.append(f"<pre>{html.escape(content)}</pre>")
         elif entity_type == "MessageEntityStrike":
-            result.append(f"<s>{escaped_content}</s>")
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f"<s>{inner}</s>")
         elif entity_type == "MessageEntityUnderline":
-            result.append(f"<u>{escaped_content}</u>")
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f"<u>{inner}</u>")
         elif entity_type == "MessageEntityTextUrl":
             url = html.escape(entity.url)
-            result.append(f'<a href="{url}">{escaped_content}</a>')
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f'<a href="{url}">{inner}</a>')
         elif entity_type == "MessageEntityUrl":
-            result.append(f'<a href="{escaped_content}">{escaped_content}</a>')
+            result.append(f'<a href="{html.escape(content)}">{html.escape(content)}</a>')
         elif entity_type == "MessageEntityMention":
-            result.append(f'<a href="https://t.me/{content[1:]}">{escaped_content}</a>')
+            result.append(f'<a href="https://t.me/{content[1:]}">{html.escape(content)}</a>')
         elif entity_type == "MessageEntityBlockquote":
-            result.append(f"<blockquote>{escaped_content}</blockquote>")
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f"<blockquote>{inner}</blockquote>")
         elif entity_type == "MessageEntitySpoiler":
-            result.append(f"<tg-spoiler>{escaped_content}</tg-spoiler>")
+            inner = _apply_nested_formatting(content, nested, text, start_utf16) if nested else html.escape(content)
+            result.append(f"<tg-spoiler>{inner}</tg-spoiler>")
+        elif entity_type == "MessageEntityCustomEmoji":
+            # Custom/premium emoji - Bot API doesn't support them in HTML
+            # Just include the text representation (the emoji character)
+            result.append(html.escape(content))
         else:
             # Unknown entity - just add escaped content
-            result.append(escaped_content)
+            result.append(html.escape(content))
         
+        processed_ranges.append((start, end))
         last_end_utf16 = end_utf16
     
     # Add remaining text after last entity
