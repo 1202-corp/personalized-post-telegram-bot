@@ -558,14 +558,21 @@ async def send_initial_best_post(
                         chat_id=chat_id,
                         media=media_items,
                     )
-                    # Send text with buttons separately
+                    # Send text separately (no buttons)
                     await message_manager.bot.send_message(
                         chat_id=chat_id,
                         text=post_text,
                         parse_mode="HTML",
-                        reply_markup=get_feed_post_keyboard(initial_best_post.get("id")) if initial_best_post.get("id") else None,
                         link_preview_options=LinkPreviewOptions(is_disabled=True),
                     )
+                    # Send buttons separately
+                    if initial_best_post.get("id"):
+                        await message_manager.send_temporary(
+                            chat_id,
+                            "👆",
+                            reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                            tag="feed_post_buttons",
+                        )
                     sent_with_caption = True
             else:
                 mid = media_ids[0]
@@ -576,14 +583,22 @@ async def send_initial_best_post(
                 if photo_bytes:
                     from bot.core import get_feed_post_keyboard
                     if caption_fits:
+                        # Photo + caption together (no buttons)
                         await message_manager.send_regular(
                             chat_id,
                             post_text,
-                            reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                             tag="feed_post",
                             photo_bytes=photo_bytes,
                             photo_filename=f"{mid}.jpg",
                         )
+                        # Buttons separately
+                        if initial_best_post.get("id"):
+                            await message_manager.send_temporary(
+                                chat_id,
+                                "👆",
+                                reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                                tag="feed_post_buttons",
+                            )
                         sent_with_caption = True
                     else:
                         input_file = BufferedInputFile(photo_bytes, filename=f"{mid}.jpg")
@@ -604,13 +619,21 @@ async def send_initial_best_post(
             if video_bytes:
                 input_file = BufferedInputFile(video_bytes, filename=f"{msg_id}.mp4")
                 if caption_fits:
+                    # Video + caption together (no buttons)
                     await message_manager.bot.send_video(
                         chat_id=chat_id,
                         video=input_file,
                         caption=post_text,
                         parse_mode=ParseMode.HTML,
-                        reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                     )
+                    # Buttons separately
+                    if initial_best_post.get("id"):
+                        await message_manager.send_temporary(
+                            chat_id,
+                            "👆",
+                            reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                            tag="feed_post_buttons",
+                        )
                     sent_with_caption = True
                 else:
                     await message_manager.bot.send_video(
@@ -619,13 +642,21 @@ async def send_initial_best_post(
                     )
 
     if not sent_with_caption:
+        # Text only (no buttons)
         await message_manager.bot.send_message(
             chat_id=chat_id,
             text=post_text,
             parse_mode=ParseMode.HTML,
-            reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
+        # Buttons separately
+        if initial_best_post.get("id"):
+            await message_manager.send_temporary(
+                chat_id,
+                "👆",
+                reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                tag="feed_post_buttons",
+            )
 
     # Mark as sent so we don't send again
     await api.update_user(user_id, initial_best_post_sent=True)
