@@ -56,4 +56,16 @@ class ChannelService(BaseAPIClient):
         except Exception as e:
             logger.error(f"Error getting user channels: {e}")
             return []
+    
+    async def get_users_by_channel(self, channel_username: str) -> List[Dict[str, Any]]:
+        """Get all users subscribed to a channel."""
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/api/v1/channels/{channel_username}/users"
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error getting users for channel {channel_username}: {e}")
+            return []
 

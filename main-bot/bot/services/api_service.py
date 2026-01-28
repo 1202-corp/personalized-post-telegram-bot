@@ -95,6 +95,13 @@ class CoreAPIClient:
     
     async def get_recommendations(self, *args, **kwargs):
         return await self.ml.get_recommendations(*args, **kwargs)
+    
+    async def get_post(self, *args, **kwargs):
+        return await self.posts.get_post(*args, **kwargs)
+    
+    async def get_users_by_channel(self, channel_username: str):
+        """Get users subscribed to a channel (via user channels)."""
+        return await self.channels.get_users_by_channel(channel_username)
 
 
 class UserBotClient:
