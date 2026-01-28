@@ -458,6 +458,7 @@ async def send_initial_best_post(
     to show the user value without requiring extra button presses.
     """
     from aiogram.types import InputMediaPhoto, BufferedInputFile, LinkPreviewOptions
+    from bot.core import get_feed_post_keyboard
     
     api = get_core_api()
     user_bot = get_user_bot()
@@ -584,7 +585,6 @@ async def send_initial_best_post(
                 except Exception:
                     photo_bytes = None
                 if photo_bytes:
-                    from bot.core import get_feed_post_keyboard
                     if caption_fits:
                         # Photo + caption together (no buttons)
                         await message_manager.send_regular(
