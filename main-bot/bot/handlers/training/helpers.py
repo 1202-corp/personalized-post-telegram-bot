@@ -496,6 +496,9 @@ async def send_initial_best_post(
         posted_at_raw = post.get("posted_at")
         try:
             posted_at = datetime.fromisoformat(posted_at_raw) if posted_at_raw else None
+            # Make offset-naive for comparison with utcnow()
+            if posted_at and posted_at.tzinfo is not None:
+                posted_at = posted_at.replace(tzinfo=None)
         except Exception:
             posted_at = None
         if posted_at and posted_at >= three_days_ago:

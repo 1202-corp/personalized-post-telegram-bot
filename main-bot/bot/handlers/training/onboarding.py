@@ -96,12 +96,20 @@ async def on_start_training(
         pass
     
     default_channels = settings.default_training_channels.split(",")
-    channels_to_scrape = [ch.strip() for ch in default_channels]
+    # Use set to avoid duplicates
+    channels_set = set()
+    for ch in default_channels:
+        ch_clean = ch.strip().lstrip("@").lower()
+        if ch_clean:
+            channels_set.add(ch_clean)
     
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
-        if ch.get("username"):
-            channels_to_scrape.append(f"@{ch['username']}")
+        username = ch.get("username")
+        if username:
+            channels_set.add(username.lower())
+    
+    channels_to_scrape = [f"@{ch}" for ch in channels_set]
     
     scrape_tasks = []
     for channel in channels_to_scrape[:3]:
@@ -162,7 +170,12 @@ async def on_confirm_training(
     )
     
     default_channels = settings.default_training_channels.split(",")
-    channels_to_scrape = [ch.strip() for ch in default_channels]
+    # Use set to avoid duplicates
+    channels_set = set()
+    for ch in default_channels:
+        ch_clean = ch.strip().lstrip("@").lower()
+        if ch_clean:
+            channels_set.add(ch_clean)
     
     # Add default channels to user's channel list if not already added
     # This ensures users keep their training channels even if defaults change in .env
@@ -179,8 +192,11 @@ async def on_confirm_training(
     
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
-        if ch.get("username"):
-            channels_to_scrape.append(f"@{ch['username']}")
+        username = ch.get("username")
+        if username:
+            channels_set.add(username.lower())
+    
+    channels_to_scrape = [f"@{ch}" for ch in channels_set]
     
     scrape_tasks = []
     for channel in channels_to_scrape[:3]:

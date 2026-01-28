@@ -401,9 +401,17 @@ class TelethonService:
         await self.ensure_connected()
         return await self._client.get_messages(entity, ids=message_id)
     
-    async def _download_media(self, message: Message, file: type = bytes) -> bytes:
-        """Download media from message (for MediaService)."""
+    async def _download_media(self, message: Message, file: type = bytes, thumb: int = None) -> bytes:
+        """Download media from message (for MediaService).
+        
+        Args:
+            message: Message with media
+            file: Output type (bytes)
+            thumb: Thumbnail index (-1 for largest, None for full media)
+        """
         await self.ensure_connected()
+        if thumb is not None:
+            return await self._client.download_media(message, file, thumb=thumb)
         return await self._client.download_media(message, file)
     
     async def start_listening(self) -> None:
