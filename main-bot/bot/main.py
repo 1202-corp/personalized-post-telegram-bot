@@ -82,12 +82,13 @@ async def main():
         """Handle training_complete notification from API via Redis."""
         telegram_id = data.get("telegram_id")
         chat_id = data.get("chat_id", telegram_id)
+        rated_count = data.get("rated_count", 0)
         
         if not telegram_id:
             logger.warning("training_complete without telegram_id")
             return
         
-        logger.info(f"Received training_complete for user {telegram_id}")
+        logger.info(f"Received training_complete for user {telegram_id}, rated_count={rated_count}")
         
         try:
             from bot.handlers.training.helpers import finish_training_flow, _get_user_lang
@@ -101,6 +102,7 @@ async def main():
             # Set state data for finish_training_flow
             await state.update_data(
                 user_id=telegram_id,
+                rated_count=rated_count,
                 is_bonus_training=False,
                 is_retrain=False,
             )
