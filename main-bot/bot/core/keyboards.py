@@ -131,11 +131,10 @@ def get_miniapp_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
 
 
 def get_training_complete_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
-    """Keyboard shown after training is complete."""
+    """Keyboard shown after training is complete. No 'My Feed' - posts are pushed only."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t.get("training_complete_btn_claim_bonus", default="🎁 Claim Bonus Channel"), callback_data="claim_bonus")],
-        [InlineKeyboardButton(text=t.get("training_complete_btn_view_feed", default="📰 View My Feed"), callback_data="view_feed")],
         [InlineKeyboardButton(text=t.get("settings_btn_my_channels", default="📋 My Channels"), callback_data="my_channels")],
     ])
 
@@ -149,13 +148,27 @@ def get_bonus_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     ])
 
 
-def get_feed_keyboard(lang: str = "en_US", has_bonus_channel: bool = False) -> InlineKeyboardMarkup:
-    """Main feed menu keyboard. Hides add channel button if user already has bonus channel."""
+def get_feed_keyboard(
+    lang: str = "en_US",
+    has_bonus_channel: bool = False,
+    mailing_any_on: bool = False,
+) -> InlineKeyboardMarkup:
+    """Main feed menu keyboard. mailing_any_on: True = show 'Turn off mailing' (🔔), False = show 'Turn on mailing' (🔕)."""
     t = get_texts(lang)
-    buttons = []
-    if not has_bonus_channel:
-        buttons.append([InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")])
-    buttons.append([InlineKeyboardButton(text=t.get("settings_btn_my_channels", default="📋 My Channels"), callback_data="my_channels")])
+    buttons = [
+        [InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")],
+        [InlineKeyboardButton(text=t.get("settings_btn_my_channels", default="📋 My Channels"), callback_data="my_channels")],
+    ]
+    if mailing_any_on:
+        buttons.append([InlineKeyboardButton(
+            text=t.get("feed_btn_turn_off_mailing", default="🔔 Turn off mailing"),
+            callback_data="mailing_toggle_all",
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text=t.get("feed_btn_turn_on_mailing", default="🔕 Turn on mailing"),
+            callback_data="mailing_toggle_all",
+        )])
     buttons.append([InlineKeyboardButton(text=t.get("feed_btn_settings", default="⚙️ Settings"), callback_data="settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -173,10 +186,9 @@ def get_feed_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardM
 
 
 def get_settings_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
-    """Settings menu keyboard."""
+    """Settings menu keyboard. Retrain is per-channel only (removed from here)."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t.get("settings_btn_retrain", default="🔄 Retrain"), callback_data="retrain")],
         [InlineKeyboardButton(text=t.get("settings_btn_delete_account", default="🗑️ Delete account"), callback_data="delete_account")],
         [InlineKeyboardButton(text=t.get("settings_btn_language", default="🌐 Language"), callback_data="change_language")],
         [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")],
@@ -221,10 +233,45 @@ def get_add_bonus_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
 def get_channels_view_keyboard(lang: str = "en_US", has_bonus_channel: bool = False) -> InlineKeyboardMarkup:
     """Keyboard for viewing user's channels with add channel and back to feed buttons."""
     t = get_texts(lang)
+    buttons = [
+        [InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")],
+        [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_channels_list_keyboard(channels: list, lang: str = "en_US") -> InlineKeyboardMarkup:
+    """One inline button per channel (alias: title or @username) + Back."""
+    t = get_texts(lang)
     buttons = []
-    if not has_bonus_channel:
-        buttons.append([InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")])
+    for ch in channels:
+        channel_id = ch.get("id")
+        if channel_id is None:
+            continue
+        label = (ch.get("title") or "").strip() or ("@" + (ch.get("username") or "").lstrip("@"))
+        if not label:
+            label = f"Channel {channel_id}"
+        buttons.append([InlineKeyboardButton(text=label[:64], callback_data=f"channel_detail:{channel_id}")])
     buttons.append([InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_channel_detail_keyboard(
+    channel_id: int,
+    mailing_enabled: bool,
+    can_delete: bool,
+    lang: str = "en_US",
+) -> InlineKeyboardMarkup:
+    """Channel detail: Toggle mailing, Retrain, Delete (if can_delete), Back."""
+    t = get_texts(lang)
+    toggle_text = t.get("channel_btn_mailing_off", "🔔 Disable mailing") if mailing_enabled else t.get("channel_btn_mailing_on", "🔕 Enable mailing")
+    buttons = [
+        [InlineKeyboardButton(text=toggle_text, callback_data=f"channel_mailing_toggle:{channel_id}")],
+        [InlineKeyboardButton(text=t.get("channel_btn_retrain", default="🎯 Retrain feed"), callback_data="retrain")],
+    ]
+    if can_delete:
+        buttons.append([InlineKeyboardButton(text=t.get("channel_btn_delete", default="🗑️ Remove channel"), callback_data=f"channel_delete:{channel_id}")])
+    buttons.append([InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="my_channels")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

@@ -31,7 +31,10 @@ class Settings(BaseSettings):
     training_max_extra_from_dislike: int = 5
     # Max extra posts that can be added due to skips
     training_max_extra_from_skip: int = 10
-    
+    # Bonus channel limits: member = 1, admin = 20
+    bonus_channel_limit_member: int = 1
+    bonus_channel_limit_admin: int = 20
+
     # Localization (using locale format: language_COUNTRY)
     default_language: str = "en_US"
     supported_languages: str = "en_US,ru_RU"  # Comma-separated list of supported locales

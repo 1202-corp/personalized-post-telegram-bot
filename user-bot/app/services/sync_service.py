@@ -152,3 +152,36 @@ class SyncService:
             logger.error(f"Failed to sync real-time post: {e}")
             return None
 
+    async def upload_channel_avatar(
+        self, channel_telegram_id: int, avatar_bytes: bytes
+    ) -> bool:
+        """Upload channel avatar (image bytes) to API. Returns True if successful."""
+        if not avatar_bytes:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.core_api_url}/api/v1/channels/by-telegram-id/{channel_telegram_id}/avatar",
+                    content=avatar_bytes,
+                    headers={"Content-Type": "image/jpeg"},
+                )
+                return response.status_code == 204
+        except Exception as e:
+            logger.error(f"Failed to upload channel avatar: {e}")
+            return False
+
+    async def set_channel_description(
+        self, channel_telegram_id: int, description: Optional[str]
+    ) -> bool:
+        """Set channel description (bio/about) in API. Returns True if successful."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.patch(
+                    f"{self.core_api_url}/api/v1/channels/by-telegram-id/{channel_telegram_id}/description",
+                    json={"description": description},
+                )
+                return response.status_code == 204
+        except Exception as e:
+            logger.error(f"Failed to set channel description: {e}")
+            return False
+

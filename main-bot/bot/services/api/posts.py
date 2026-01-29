@@ -1,7 +1,7 @@
 """Post service for API interactions."""
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .base import BaseAPIClient
 
 logger = logging.getLogger(__name__)
@@ -56,16 +56,20 @@ class PostService(BaseAPIClient):
     async def get_best_posts(
         self,
         telegram_id: int,
-        limit: int = 1
+        limit: int = 1,
+        exclude_post_ids: Optional[List[int]] = None,
     ) -> List[Dict[str, Any]]:
         """Get best posts for user feed."""
         try:
+            payload: Dict[str, Any] = {
+                "user_telegram_id": telegram_id,
+                "limit": limit,
+            }
+            if exclude_post_ids:
+                payload["exclude_post_ids"] = exclude_post_ids
             response = await self.client.post(
                 f"{self.base_url}/api/v1/posts/best",
-                json={
-                    "user_telegram_id": telegram_id,
-                    "limit": limit,
-                }
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()
@@ -97,4 +101,17 @@ class PostService(BaseAPIClient):
         except Exception as e:
             logger.error(f"Error getting post {post_id}: {e}")
             return None
+
+    async def get_post_recipients(self, post_id: int) -> List[int]:
+        """Post-centric delivery: get telegram_ids of users who should receive this post."""
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/api/v1/posts/{post_id}/recipients"
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("telegram_ids", [])
+        except Exception as e:
+            logger.error(f"Error getting post recipients for post_id={post_id}: {e}")
+            return []
 

@@ -54,9 +54,6 @@ class CoreAPIClient:
     async def update_activity(self, *args, **kwargs):
         return await self.users.update_activity(*args, **kwargs)
     
-    async def create_log(self, *args, **kwargs):
-        return await self.users.create_log(*args, **kwargs)
-    
     async def get_user_language(self, *args, **kwargs):
         return await self.users.get_user_language(*args, **kwargs)
     
@@ -65,6 +62,9 @@ class CoreAPIClient:
     
     async def get_feed_users(self, *args, **kwargs):
         return await self.users.get_feed_users(*args, **kwargs)
+
+    async def get_feed_eligible(self, *args, **kwargs):
+        return await self.users.get_feed_eligible(*args, **kwargs)
     
     async def get_default_channels(self, *args, **kwargs):
         return await self.channels.get_default_channels(*args, **kwargs)
@@ -74,6 +74,27 @@ class CoreAPIClient:
     
     async def get_user_channels(self, *args, **kwargs):
         return await self.channels.get_user_channels(*args, **kwargs)
+    
+    async def get_mailing_recipients_by_telegram_id(self, *args, **kwargs):
+        return await self.channels.get_mailing_recipients_by_telegram_id(*args, **kwargs)
+    
+    async def get_user_channels_with_meta(self, *args, **kwargs):
+        return await self.channels.get_user_channels_with_meta(*args, **kwargs)
+    
+    async def get_user_channel_detail(self, *args, **kwargs):
+        return await self.channels.get_user_channel_detail(*args, **kwargs)
+    
+    async def patch_user_channel_mailing(self, *args, **kwargs):
+        return await self.channels.patch_user_channel_mailing(*args, **kwargs)
+
+    async def patch_user_all_channels_mailing(self, *args, **kwargs):
+        return await self.channels.patch_user_all_channels_mailing(*args, **kwargs)
+
+    async def delete_user_channel(self, *args, **kwargs):
+        return await self.channels.delete_user_channel(*args, **kwargs)
+    
+    async def get_channel_avatar_bytes(self, *args, **kwargs):
+        return await self.channels.get_channel_avatar_bytes(*args, **kwargs)
     
     async def get_user_interactions(self, *args, **kwargs):
         return await self.posts.get_user_interactions(*args, **kwargs)
@@ -105,6 +126,10 @@ class CoreAPIClient:
     async def get_users_by_channel(self, channel_username: str):
         """Get users subscribed to a channel (via user channels)."""
         return await self.channels.get_users_by_channel(channel_username)
+
+    async def get_post_recipients(self, post_id: int) -> List[int]:
+        """Post-centric delivery: get telegram_ids of users who should receive this post."""
+        return await self.posts.get_post_recipients(post_id)
 
 
 class UserBotClient:

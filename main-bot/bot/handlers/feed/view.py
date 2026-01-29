@@ -1,16 +1,12 @@
 """Feed view handlers (viewing posts, interactions)."""
 
 import logging
-from datetime import datetime, timedelta
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
 from bot.core import MessageManager, get_texts, get_feed_keyboard, get_feed_post_keyboard
-from bot.services import get_core_api, get_user_bot
-from bot.services.media_service import MediaService
-from bot.services.post_service import PostService
-import html
+from bot.services import get_core_api
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -27,146 +23,37 @@ async def on_view_feed(
     callback: CallbackQuery,
     message_manager: MessageManager
 ):
-    """Show the personalized feed."""
+    """Stub: no pull feed; posts are delivered automatically (push) when there is a new post in a channel."""
     await message_manager.send_toast(callback)
     api = get_core_api()
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
-
     await api.update_activity(user_id)
-    await api.update_user(user_id, status="active")
-
-    user_data = await api.get_user(user_id)
-    lang = await _get_user_lang(user_id)
-    texts = get_texts(lang)
-
-    # Fetch a larger pool of best posts for initial highlight and regular feed
-    all_posts = await api.get_best_posts(user_id, limit=10)
-    
-    if not all_posts:
-        has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
+    feed_eligible = await api.get_feed_eligible(user_id)
+    if not (feed_eligible and feed_eligible.get("eligible")):
+        lang = await _get_user_lang(user_id)
+        texts = get_texts(lang)
+        from bot.core.keyboards import get_start_keyboard
         await message_manager.send_system(
             chat_id,
-            texts.get("feed_empty"),
-            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+            texts.get("feed_complete_training_first", "Complete training first to unlock your feed and mailing."),
+            reply_markup=get_start_keyboard(lang),
             tag="menu"
         )
         return
-    
-    # Determine if we should send the one-time initial best post
-    initial_best_post = None
-    if user_data and not user_data.get("initial_best_post_sent", False):
-        now = datetime.utcnow()
-        three_days_ago = now - timedelta(days=3)
-
-        for post in all_posts:
-            posted_at_raw = post.get("posted_at")
-            try:
-                posted_at = datetime.fromisoformat(posted_at_raw) if posted_at_raw else None
-            except Exception:
-                posted_at = None
-            if posted_at and posted_at >= three_days_ago:
-                initial_best_post = post
-                break
-
-        # Fallback: if nothing in last 3 days, take the first best post
-        if not initial_best_post:
-            initial_best_post = all_posts[0]
-
-    # Build list of feed posts (exclude initial best to avoid duplicates)
-    feed_posts = []
-    used_initial_id = initial_best_post.get("id") if initial_best_post else None
-    for post in all_posts:
-        if used_initial_id is not None and post.get("id") == used_initial_id:
-            continue
-        feed_posts.append(post)
-        if len(feed_posts) >= 3:
-            break
-
-    total_count = len(feed_posts) + (1 if initial_best_post else 0)
-
-    # Show feed menu
+    user_data = await api.get_user(user_id)
+    lang = await _get_user_lang(user_id)
+    texts = get_texts(lang)
     has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
+    channels = await api.get_user_channels_with_meta(user_id)
+    mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
+    msg = texts.get("feed_posts_push_only", "Posts are delivered automatically when there is a new post in a channel. Use My Channels to manage subscriptions.")
     await message_manager.send_system(
         chat_id,
-        f"📰 {texts.get('feed_ready', default='Your Personalized Feed')} ({total_count})",
-        reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+        msg,
+        reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus, mailing_any_on=mailing_any_on),
         tag="menu"
     )
-    
-    # Initialize services
-    user_bot = get_user_bot()
-    media_service = MediaService(user_bot)
-    post_service = PostService(message_manager, media_service, user_bot)
-
-    # Send initial best post once, if applicable
-    if initial_best_post:
-        # Format post text with hyperlink (HTML)
-        channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
-        channel_username = initial_best_post.get("channel_username", "").lstrip("@")
-        message_id = initial_best_post.get("telegram_message_id")
-        
-        # Get post text - fetch from user-bot if not available (fallback)
-        full_text_raw = initial_best_post.get("text") or ""
-        if not full_text_raw and channel_username and message_id:
-            user_bot = get_user_bot()
-            full_text_raw = await user_bot.get_post_text(channel_username, message_id) or ""
-        text = full_text_raw  # Already HTML formatted from user-bot
-        
-        if channel_username and message_id:
-            header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"
-        else:
-            header = f"📰 <b>{channel_title}</b>\n\n"
-        body = text if text else "<i>[Media content]</i>"
-        post_text = header + body
-        
-        # Update post dict with formatted text for post_service
-        formatted_post = initial_best_post.copy()
-        formatted_post["text"] = post_text
-        
-        await post_service.send_post(
-            chat_id,
-            formatted_post,
-            keyboard=get_feed_post_keyboard(initial_best_post.get("id"), lang) if initial_best_post.get("id") else None,
-            tag="feed_post",
-            message_type="regular",
-            include_relevance=True,
-        )
-        # Mark as sent so we don't repeat in future sessions
-        await api.update_user(user_id, initial_best_post_sent=True)
-
-    # Send remaining feed posts
-    for post in feed_posts:
-        # Format post text with hyperlink (HTML). Assume post['text'] is already HTML.
-        channel_title = html.escape(post.get("channel_title", "Unknown"))
-        channel_username = post.get("channel_username", "").lstrip("@")
-        message_id = post.get("telegram_message_id")
-        
-        # Get post text - fetch from user-bot if not available (fallback)
-        body = post.get("text") or ""
-        if not body and channel_username and message_id:
-            user_bot = get_user_bot()
-            body = await user_bot.get_post_text(channel_username, message_id) or ""
-        body = body or "<i>[Media content]</i>"
-        
-        if channel_username and message_id:
-            header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"
-        else:
-            header = f"📰 <b>{channel_title}</b>\n\n"
-        post_text = header + body
-        
-        # Update post dict with formatted text for post_service
-        formatted_post = post.copy()
-        formatted_post["text"] = post_text
-        
-        await post_service.send_post(
-            chat_id,
-            formatted_post,
-            keyboard=get_feed_post_keyboard(post.get("id"), lang) if post.get("id") else None,
-            tag="feed_post",
-            message_type="regular",
-            include_relevance=True,
-        )
 
 
 @router.callback_query(F.data.startswith("feed:"))

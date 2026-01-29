@@ -33,6 +33,21 @@ class JoinChannelResponse(BaseModel):
     message: str
 
 
+class RefreshChannelMetaRequest(BaseModel):
+    """Request schema for refreshing channel avatar and description (backfill)."""
+    channel_username: str
+
+
+class RefreshChannelMetaResponse(BaseModel):
+    """Response schema for refresh channel meta."""
+    success: bool
+    channel_username: str
+    channel_telegram_id: Optional[int] = None
+    description_set: bool
+    avatar_uploaded: bool
+    message: str
+
+
 class PostData(BaseModel):
     """Post data schema."""
     telegram_message_id: int
