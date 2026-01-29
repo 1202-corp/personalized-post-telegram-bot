@@ -9,6 +9,7 @@ class ScrapeRequest(BaseModel):
     """Request schema for scraping a channel."""
     channel_username: str
     limit: int = 7
+    for_training: bool = False  # If True, don't store text in DB (only metadata)
 
 
 class ScrapeResponse(BaseModel):

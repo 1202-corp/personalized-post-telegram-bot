@@ -97,7 +97,7 @@ class APIServiceProtocol(Protocol):
         self,
         telegram_id: int,
         status: Optional[str] = None,
-        is_trained: Optional[bool] = None,
+        user_role: Optional[str] = None,
         bonus_channels_count: Optional[int] = None,
         initial_best_post_sent: Optional[bool] = None,
     ) -> Optional[UserData]:
@@ -227,5 +227,13 @@ class UserBotServiceProtocol(Protocol):
         message_id: int
     ) -> Optional[bytes]:
         """Fetch video bytes for a specific channel message."""
+        ...
+    
+    async def get_post_text(
+        self,
+        channel_username: str,
+        message_id: int
+    ) -> Optional[str]:
+        """Fetch post text in HTML format for a specific channel message."""
         ...
 

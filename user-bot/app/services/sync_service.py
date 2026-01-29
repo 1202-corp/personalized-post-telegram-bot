@@ -60,7 +60,8 @@ class SyncService:
     async def sync_posts(
         self,
         channel_telegram_id: int,
-        posts: List[PostDataDict]
+        posts: List[PostDataDict],
+        for_training: bool = False
     ) -> bool:
         """
         Sync posts to core API.
@@ -68,6 +69,7 @@ class SyncService:
         Args:
             channel_telegram_id: Telegram channel ID
             posts: List of post data dictionaries
+            for_training: If True, don't store text (only metadata) - text will be fetched on-demand
             
         Returns:
             True if successful, False otherwise
@@ -80,7 +82,7 @@ class SyncService:
             for post in posts:
                 post_data.append({
                     "telegram_message_id": post["telegram_message_id"],
-                    "text": post.get("text"),
+                    "text": None if for_training else post.get("text"),  # Don't store text for training posts
                     "media_type": post.get("media_type"),
                     "media_file_id": post.get("media_file_id"),
                     "posted_at": post["posted_at"],

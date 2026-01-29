@@ -7,6 +7,13 @@ TELEGRAM_CAPTION_LIMIT = 1024
 import html as html_module
 
 
+async def get_user_lang(user_id: int) -> str:
+    """Get user's language preference."""
+    from bot.services import get_core_api
+    api = get_core_api()
+    return await api.get_user_language(user_id)
+
+
 def escape_md(text: str | None) -> str:
     """Escape user-provided text for HTML parse mode.
 

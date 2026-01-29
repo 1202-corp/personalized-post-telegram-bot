@@ -61,9 +61,11 @@ async def scrape_channel(request: ScrapeRequest):
     )
     
     # Sync posts to core API
+    # For training posts, don't store text (only metadata) - text will be fetched on-demand
     await sync_service.sync_posts(
         result["channel_telegram_id"],
-        result["posts"]
+        result["posts"],
+        for_training=request.for_training
     )
     
     # NOTE: Do NOT notify via Redis here - scrape is for training/historical posts

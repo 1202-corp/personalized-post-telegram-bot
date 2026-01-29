@@ -9,9 +9,10 @@ from aiogram.enums import ParseMode
 
 from bot.core import MessageManager, get_texts, get_settings
 from bot.core.states import TrainingStates
-from bot.services import get_core_api, get_user_bot
+from bot.services import get_core_api, get_user_bot, get_post_cache
 from bot.services.media_service import MediaService
 import html
+import base64
 from bot.utils import TELEGRAM_CAPTION_LIMIT
 from bot.core import (
     get_training_post_keyboard, get_feed_keyboard, get_training_complete_keyboard,
@@ -33,10 +34,46 @@ def _get_media_service() -> MediaService:
     return _media_service
 
 
-async def _get_user_lang(user_id: int) -> str:
-    """Get user's language preference."""
-    api = get_core_api()
-    return await api.get_user_language(user_id)
+from bot.utils import get_user_lang as _get_user_lang
+
+
+async def _prefetch_post_content(
+    post_id: int,
+    channel_username: str,
+    message_id: int
+) -> None:
+    """
+    Prefetch post content (text and media) and cache it in Redis.
+    
+    Args:
+        post_id: Post ID
+        channel_username: Channel username
+        message_id: Telegram message ID
+    """
+    try:
+        # Check cache first
+        post_cache = get_post_cache()
+        cached = await post_cache.get_post_content(post_id)
+        
+        if cached:
+            # Already cached, skip
+            return
+        
+        # Fetch from user-bot
+        user_bot = get_user_bot()
+        full_content = await user_bot.get_post_full_content(channel_username, message_id)
+        
+        if full_content:
+            # Cache the content
+            await post_cache.set_post_content(
+                post_id=post_id,
+                text=full_content.get("text"),
+                media_type=full_content.get("media_type"),
+                media_data=full_content.get("media_data")  # base64 string
+            )
+            logger.debug(f"Prefetched and cached post content (post_id={post_id})")
+    except Exception as e:
+        logger.error(f"Error prefetching post content (post_id={post_id}): {e}")
 
 
 async def _start_training_session(
@@ -46,14 +83,27 @@ async def _start_training_session(
     state: FSMContext,
 ) -> None:
     """Initialize and show the first training post."""
-    # Start background prefetch of ALL posts while showing first one
     data = await state.get_data()
     posts = data.get("training_posts", [])
+    
+    # Prefetch first two posts (index 0 and 1) in background
     if posts:
-        media_service = _get_media_service()
-        asyncio.create_task(
-            media_service.prefetch_all_posts_media(chat_id, posts)
-        )
+        post_cache = get_post_cache()
+        for i in [0, 1]:
+            if i < len(posts):
+                post = posts[i]
+                post_id = post.get("id")
+                channel_username = post.get("channel_username", "").lstrip("@")
+                msg_id = post.get("telegram_message_id")
+                
+                if post_id and channel_username and msg_id:
+                    # Check if already cached
+                    cached = await post_cache.get_post_content(post_id)
+                    if not cached:
+                        # Prefetch in background
+                        asyncio.create_task(
+                            _prefetch_post_content(post_id, channel_username, msg_id)
+                        )
 
     await show_training_post(chat_id, message_manager, state)
 
@@ -107,8 +157,14 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     
     data = await state.get_data()
     posts = data.get("training_posts", [])
-    index = data.get("current_post_index", 0)
+    queue = data.get("training_queue", [])
     user_id = data.get("user_id")
+    
+    # Get current post index from queue (if using queue) or fallback to current_post_index
+    if queue:
+        index = queue[0]  # First item in queue is current post
+    else:
+        index = data.get("current_post_index", 0)
     
     if index >= len(posts):
         # All posts rated
@@ -121,14 +177,79 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    # Format post text (assume HTML comes from API/user-bot)
+    # Format post text (fetch from Redis cache or user-bot)
     channel_title = html.escape(post.get("channel_title", "Unknown Channel"))
-    post_text = post.get("text") or ""
     channel_username = post.get("channel_username", "").lstrip("@")
     msg_id = post.get("telegram_message_id")
+    post_id = post.get("id")
+    
+    # Get post content from Redis cache first, then user-bot if not cached
+    post_text = post.get("text") or ""
+    cached_media_type = None
+    cached_media_data = None
+    
+    if post_id:
+        post_cache = get_post_cache()
+        cached_content = await post_cache.get_post_content(post_id)
+        
+        if cached_content:
+            # Use cached content
+            post_text = cached_content.get("text") or ""
+            cached_media_type = cached_content.get("media_type")
+            cached_media_data = cached_content.get("media_data")  # base64 string
+    
+    # If not in cache, fetch from user-bot and cache it
+    if not post_text and not cached_media_data and channel_username and msg_id:
+        user_bot = get_user_bot()
+        full_content = await user_bot.get_post_full_content(channel_username, msg_id)
+        
+        if full_content:
+            post_text = full_content.get("text") or ""
+            cached_media_type = full_content.get("media_type")
+            cached_media_data = full_content.get("media_data")  # base64 string
+            
+            # Cache the content for future use
+            if post_id:
+                post_cache = get_post_cache()
+                await post_cache.set_post_content(
+                    post_id=post_id,
+                    text=post_text,
+                    media_type=cached_media_type,
+                    media_data=cached_media_data
+                )
+    
+    # Prefetch next post content in background
+    # If using queue, prefetch next item in queue, otherwise prefetch index + 1
+    next_index = None
+    if queue and len(queue) > 1:
+        next_index = queue[1]  # Second item in queue is next post
+    elif not queue and index + 1 < len(posts):
+        next_index = index + 1
+    
+    if next_index is not None and next_index < len(posts):
+        next_post = posts[next_index]
+        next_post_id = next_post.get("id")
+        next_channel_username = next_post.get("channel_username", "").lstrip("@")
+        next_msg_id = next_post.get("telegram_message_id")
+        
+        if next_post_id and next_channel_username and next_msg_id:
+            # Check if next post is already cached
+            post_cache = get_post_cache()
+            next_cached = await post_cache.get_post_content(next_post_id)
+            
+            if not next_cached:
+                # Prefetch next post content in background
+                asyncio.create_task(
+                    _prefetch_post_content(next_post_id, next_channel_username, next_msg_id)
+                )
     
     # Build post text with hyperlink to original (HTML format) - WITHOUT progress info
-    text = f"📰 <b>{texts.get('post_label', default='Post')} {index + 1}/{len(posts)}</b>\n"
+    # Calculate progress: current position in queue or index
+    if queue:
+        progress_current = len(posts) - len(queue) + 1
+    else:
+        progress_current = index + 1
+    text = f"📰 <b>{texts.get('post_label', default='Post')} {progress_current}/{len(posts)}</b>\n"
     if channel_username and msg_id:
         text += f"{texts.get('from_label', default='From')}: <a href=\"https://t.me/{channel_username}/{msg_id}\">{channel_title}</a>\n\n"
     else:
@@ -140,8 +261,18 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
     post_message_id = None
 
     # Send post as REGULAR message (text/media only, no buttons)
-    media_type = post.get("media_type")
-    if media_type == "photo":
+    # Use cached media from Redis if available
+    media_type_to_use = cached_media_type or post.get("media_type")
+    
+    if media_type_to_use == "photo":
+        # Try to use cached media data from Redis first
+        photo_bytes_from_cache = None
+        if cached_media_data:
+            try:
+                photo_bytes_from_cache = base64.b64decode(cached_media_data.encode('utf-8'))
+            except Exception as e:
+                logger.warning(f"Failed to decode cached media_data for post {post_id}: {e}")
+        
         media_ids_str = post.get("media_file_id") or ""
         media_ids: list[int] = []
         if media_ids_str:
@@ -154,12 +285,16 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
             if isinstance(msg_id, int):
                 media_ids.append(msg_id)
 
-        if channel_username and media_ids:
+        if channel_username and (media_ids or photo_bytes_from_cache):
             user_bot = get_user_bot()
             media_service = _get_media_service()
             cached_photo = await media_service.get_cached_photo(chat_id, post.get("id", 0))
             cached_photos = await media_service.get_cached_photos(chat_id, post.get("id", 0))
             cached = {"photo": cached_photo, "photos": cached_photos} if cached_photo or cached_photos else None
+            
+            # Prefer Redis cached media over in-memory cache
+            if photo_bytes_from_cache:
+                cached = {"photo": photo_bytes_from_cache}
 
             if len(media_ids) > 1:
                 # Album
@@ -270,17 +405,26 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
             if post_msg:
                 post_message_id = post_msg.message_id
 
-    elif media_type == "video" and channel_username and msg_id:
-        user_bot = get_user_bot()
-        media_service = _get_media_service()
-        cached_video = await media_service.get_cached_video(chat_id, post.get("id", 0))
-        if cached_video:
-            video_bytes = cached_video
-        else:
+    elif media_type_to_use == "video" and channel_username and msg_id:
+        # Try to use cached media data from Redis first
+        video_bytes = None
+        if cached_media_data:
             try:
-                video_bytes = await user_bot.get_video(channel_username, msg_id)
-            except Exception:
-                video_bytes = None
+                video_bytes = base64.b64decode(cached_media_data.encode('utf-8'))
+            except Exception as e:
+                logger.warning(f"Failed to decode cached video media_data for post {post_id}: {e}")
+        
+        if not video_bytes:
+            user_bot = get_user_bot()
+            media_service = _get_media_service()
+            cached_video = await media_service.get_cached_video(chat_id, post.get("id", 0))
+            if cached_video:
+                video_bytes = cached_video
+            else:
+                try:
+                    video_bytes = await user_bot.get_video(channel_username, msg_id)
+                except Exception:
+                    video_bytes = None
         
         if video_bytes:
             try:
@@ -384,8 +528,9 @@ async def finish_training_flow(chat_id: int, message_manager: MessageManager, st
     is_retrain = bool(data.get("is_retrain"))
     
     # Reset user status from "training" to "active"
+    # Role will be updated to MEMBER automatically in mark_training_complete
     if user_id:
-        await api.update_user(user_id, status="active", is_trained=True)
+        await api.update_user(user_id, status="active")
     
     # Clean up all training-related messages
     await message_manager.delete_temporary(chat_id, tag="training_post_controls")
@@ -512,7 +657,11 @@ async def send_initial_best_post(
     channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
     channel_username = (initial_best_post.get("channel_username") or "").lstrip("@")
     msg_id = initial_best_post.get("telegram_message_id")
+    
+    # Get post text - fetch from user-bot if not available
     full_text_raw = initial_best_post.get("text") or ""
+    if not full_text_raw and channel_username and msg_id:
+        full_text_raw = await user_bot.get_post_text(channel_username, msg_id) or ""
     text = full_text_raw  # Already HTML formatted from user-bot
     score = initial_best_post.get("relevance_score", 0)
 

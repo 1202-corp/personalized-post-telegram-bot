@@ -26,10 +26,7 @@ async def get_user_texts(user_id: int):
     return get_texts(lang)
 
 
-async def _get_user_lang(user_id: int) -> str:
-    """Get user's language preference."""
-    api = get_core_api()
-    return await api.get_user_language(user_id)
+from bot.utils import get_user_lang as _get_user_lang
 
 
 @router.message(CommandStart())
@@ -72,19 +69,16 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     
     # Check user status and route accordingly
     status = user_data.get("status", "new")
-    is_trained = user_data.get("is_trained", False)
+    user_role = user_data.get("user_role", "guest")
     name = html.escape(user.first_name or "there")
     
-    # Training is considered complete only if status is not in new/onboarding/training
-    training_complete = status not in ["new", "onboarding", "training"] and is_trained
+    # training_complete: проверяем по user_role (member или admin = прошел тренировку)
+    training_complete = user_role in ("member", "admin")
     
     if not training_complete:
-        # User hasn't completed training - treat as guest
-        if status in ["new", "onboarding"]:
-            await api.update_user(user.id, status="onboarding")
-        else:
-            # If user somehow in training, reset to onboarding on /start
-            await api.update_user(user.id, status="onboarding", is_trained=False)
+        # Гость (guest): ещё не прошёл тренировку или данные были удалены
+        # Всегда приводим статус к "new" и сбрасываем роль на guest
+        await api.update_user(user.id, status="new", user_role="guest")
         await message_manager.send_system(
             message.chat.id,
             texts.get("welcome", name=name),
@@ -93,7 +87,9 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             is_start=True
         )
     else:
-        # User has completed training - show main menu
+        # Member или Admin: пользователь прошёл тренировку и пользуется сервисом
+        if status != "active":
+            await api.update_user(user.id, status="active")
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
         await message_manager.send_system(
             message.chat.id,
@@ -146,7 +142,7 @@ async def cmd_status(message: Message, message_manager: MessageManager):
     
     status_text = texts.get("status",
         status=user_data.get("status", "unknown"),
-        is_trained="✅" if user_data.get("is_trained") else "❌",
+        is_trained="✅" if user_data.get("user_role") in ("member", "admin") else "❌",
         bonus_channels=user_data.get("bonus_channels_count", 0),
     )
     

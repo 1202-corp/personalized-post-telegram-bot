@@ -7,6 +7,7 @@ from typing import Optional
 
 from PIL import Image
 
+from app.core.utils import get_message_html
 from app.types import MediaServiceProtocol, TelethonServiceProtocol
 
 logger = logging.getLogger(__name__)
@@ -130,5 +131,99 @@ class MediaService:
             return None
         except Exception as e:
             logger.error(f"Error downloading video thumbnail from @{username} (msg {message_id}): {e}")
+            return None
+    
+    async def get_post_text(self, username: str, message_id: int) -> Optional[str]:
+        """
+        Get post text in HTML format for a specific channel message.
+        
+        Used by main-bot via user-bot HTTP API to get post text during training.
+        
+        Args:
+            username: Channel username (with or without @)
+            message_id: Telegram message ID
+            
+        Returns:
+            HTML formatted text or None if not found/failed
+        """
+        await self.telethon_service.ensure_connected()
+        
+        username = username.lstrip("@").lower()
+        
+        try:
+            entity = await self.telethon_service._get_entity(username)
+            message = await self.telethon_service._get_message(entity, message_id)
+            
+            if not message:
+                return None
+            
+            # Get HTML formatted text
+            text = get_message_html(message)
+            return text if text else None
+        except Exception as e:
+            logger.error(f"Error getting post text from @{username} (msg {message_id}): {e}")
+            return None
+    
+    async def get_post_full_content(
+        self,
+        username: str,
+        message_id: int
+    ) -> Optional[dict]:
+        """
+        Get full post content (text and media) for a specific channel message.
+        
+        Used by main-bot via user-bot HTTP API to get post content for caching.
+        
+        Args:
+            username: Channel username (with or without @)
+            message_id: Telegram message ID
+            
+        Returns:
+            Dict with keys: text, media_type, media_data (base64 encoded bytes)
+            or None if not found/failed
+        """
+        await self.telethon_service.ensure_connected()
+        
+        username = username.lstrip("@").lower()
+        
+        try:
+            import base64
+            
+            entity = await self.telethon_service._get_entity(username)
+            message = await self.telethon_service._get_message(entity, message_id)
+            
+            if not message:
+                return None
+            
+            result = {}
+            
+            # Get text
+            text = get_message_html(message)
+            if text:
+                result["text"] = text
+            
+            # Get media
+            media_type = None
+            media_data = None
+            
+            if message.photo:
+                media_type = "photo"
+                photo_bytes = await self.download_photo(username, message_id)
+                if photo_bytes:
+                    media_data = base64.b64encode(photo_bytes).decode('utf-8')
+            elif message.video:
+                media_type = "video"
+                video_bytes = await self.download_video(username, message_id)
+                if video_bytes:
+                    media_data = base64.b64encode(video_bytes).decode('utf-8')
+            
+            if media_type:
+                result["media_type"] = media_type
+            if media_data:
+                result["media_data"] = media_data
+            
+            return result if result else None
+        except Exception as e:
+            logger.error(f"Error getting full post content from @{username} (msg {message_id}): {e}")
             return None
 
