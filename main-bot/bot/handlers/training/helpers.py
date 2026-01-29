@@ -487,8 +487,10 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
             post_message_id = post_msg.message_id
     
     # Now send temporary message with progress and buttons
-    total = len(posts)
-    progress_text = texts.get("training_progress", current=index, total=total)
+    # Use initial_queue_size for total (saved at start, doesn't change)
+    rated_count = data.get("rated_count", 0)
+    initial_queue_size = data.get("initial_queue_size", len(queue) if queue else len(posts))
+    progress_text = texts.get("training_progress", current=rated_count, total=initial_queue_size)
     await message_manager.send_temporary(
         chat_id,
         progress_text,
