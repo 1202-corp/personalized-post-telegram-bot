@@ -159,7 +159,7 @@ async def on_confirm_bonus_training(
     posts = await api.get_training_posts(
         user_id,
         channels_to_scrape,
-        settings.posts_per_channel,
+        settings.training_recent_posts_per_channel,
     )
 
     if not posts:
@@ -173,11 +173,22 @@ async def on_confirm_bonus_training(
         )
         return
 
+    # Build initial queue (first N posts from pool, not all)
+    initial_count = min(len(posts), settings.training_initial_posts_per_channel)
+    initial_queue = list(range(initial_count))
+    
     await state.update_data(
         user_id=user_id,
         training_posts=posts,
         current_post_index=0,
         rated_count=0,
+        training_queue=initial_queue,
+        shown_indices=[],
+        likes_count=0,
+        dislikes_count=0,
+        skips_count=0,
+        extra_from_dislike_used=0,
+        extra_from_skip_used=0,
         last_media_ids=[],
         is_bonus_training=True,
     )
@@ -226,7 +237,7 @@ async def on_confirm_retrain(
     posts = await api.get_training_posts(
         user_id,
         channels_to_scrape[:3],
-        settings.posts_per_channel,
+        settings.training_recent_posts_per_channel,
     )
 
     if not posts:
@@ -238,11 +249,41 @@ async def on_confirm_retrain(
         )
         return
 
+    # Build initial queue with interleaving
+    from itertools import zip_longest
+    posts_by_channel = {}
+    for idx, post in enumerate(posts):
+        ch_name = post.get("channel_username", "unknown")
+        if ch_name not in posts_by_channel:
+            posts_by_channel[ch_name] = []
+        posts_by_channel[ch_name].append(idx)
+    
+    # Interleave indices
+    channel_lists = list(posts_by_channel.values())
+    interleaved_indices = []
+    for items in zip_longest(*channel_lists):
+        for item in items:
+            if item is not None:
+                interleaved_indices.append(item)
+    
+    # Initial queue: first N posts per channel
+    initial_per_channel = settings.training_initial_posts_per_channel
+    num_channels = len(posts_by_channel)
+    initial_queue_size = initial_per_channel * num_channels
+    initial_queue = interleaved_indices[:min(initial_queue_size, len(interleaved_indices))]
+    
     await state.update_data(
         user_id=user_id,
         training_posts=posts,
         current_post_index=0,
         rated_count=0,
+        training_queue=initial_queue,
+        shown_indices=[],
+        likes_count=0,
+        dislikes_count=0,
+        skips_count=0,
+        extra_from_dislike_used=0,
+        extra_from_skip_used=0,
         last_media_ids=[],
         is_retrain=True,
     )

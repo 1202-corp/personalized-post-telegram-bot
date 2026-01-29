@@ -117,8 +117,13 @@ async def main():
         channel_username = data.get("channel_username", "")
         channel_title = data.get("channel_title", "")
         post_id = data.get("post_id")
+        # Get text and media directly from event (user-bot sends full data)
+        event_text = data.get("text")
+        event_media_type = data.get("media_type")
+        event_media_file_id = data.get("media_file_id")
+        telegram_message_id = data.get("telegram_message_id")
         
-        logger.info(f"Received new_post from @{channel_username}, post_id={post_id}")
+        logger.info(f"Received new_post from @{channel_username}, post_id={post_id}, has_text={bool(event_text)}")
         
         if not post_id:
             logger.debug("new_post without post_id, skipping real-time delivery")
@@ -137,15 +142,16 @@ async def main():
                 logger.debug(f"No users subscribed to @{channel_username}")
                 return
             
-            # Get post details from API
-            post = await api.get_post(post_id)
-            if not post:
-                logger.warning(f"Post {post_id} not found in API")
-                return
-            
-            # Add channel info from Redis event (not in API response)
-            post["channel_username"] = channel_username
-            post["channel_title"] = channel_title
+            # Build post dict from event data (user-bot sends everything we need)
+            post = {
+                "id": post_id,
+                "telegram_message_id": telegram_message_id,
+                "text": event_text,
+                "media_type": event_media_type,
+                "media_file_id": event_media_file_id,
+                "channel_username": channel_username,
+                "channel_title": channel_title,
+            }
             
             # Initialize realtime feed service
             feed_service = RealtimeFeedService(bot, message_manager)
