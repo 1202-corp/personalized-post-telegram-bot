@@ -19,6 +19,7 @@ from bot.core.keyboards import (
     get_miniapp_keyboard,
     get_channels_view_keyboard,
     get_how_it_works_keyboard,
+    get_confirm_keyboard,
 )
 from bot.core.message_manager import MessageManager
 from bot.core.message_registry import MessageRegistry, MessageType, ManagedMessage
@@ -44,6 +45,7 @@ __all__ = [
     "get_miniapp_keyboard",
     "get_channels_view_keyboard",
     "get_how_it_works_keyboard",
+    "get_confirm_keyboard",
     "MessageManager",
     "MessageType",
     "ManagedMessage",
