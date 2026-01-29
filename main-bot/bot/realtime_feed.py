@@ -93,39 +93,31 @@ class RealtimeFeedService:
     ):
         """Send a new post notification to a user."""
         try:
-            # Format the post - HTML format
+            # Get post data
             channel_username = post.get("channel_username", "").lstrip("@")
+            channel_title = post.get("channel_title") or f"@{channel_username}"
             msg_id = post.get("telegram_message_id")
-            text = post.get("text", "")
-            escaped_text = html.escape(text)
-            
-            # Create header with link (HTML)
-            if channel_username and msg_id:
-                header = f"🆕 Новый пост в <a href=\"https://t.me/{channel_username}/{msg_id}\">@{channel_username}</a>\n\n"
-            else:
-                header = "🆕 Новый пост\n\n"
-            
-            full_text = header + escaped_text
-            
-            # Send based on media type
+            text = post.get("text", "")  # Already in HTML format from user-bot
             media_type = post.get("media_type")
+            media_file_id = post.get("media_file_id")
             
-            if media_type == "photo":
-                # Get photo from user-bot
-                user_bot = get_user_bot()
-                photo_bytes = await user_bot.get_photo(channel_username, msg_id)
-                
-                if photo_bytes:
-                    await self.message_manager.send_regular(
-                        chat_id=user_id,
-                        text=full_text[:1024],
-                        reply_markup=get_feed_post_keyboard(post.get("id"), lang),
-                        photo_bytes=photo_bytes,
-                        photo_filename=f"{msg_id}.jpg",
-                        tag="realtime_post"
-                    )
-                else:
-                    await self._send_text_post(user_id, full_text, post, lang)
+            # Create header with link to post
+            if channel_username and msg_id:
+                # For media groups, link to first message
+                first_msg_id = msg_id
+                if media_file_id and "," in str(media_file_id):
+                    first_msg_id = media_file_id.split(",")[0]
+                header = f'🆕 <a href="https://t.me/{channel_username}/{first_msg_id}">{html.escape(channel_title)}</a>\n\n'
+            else:
+                header = f"🆕 {html.escape(channel_title)}\n\n"
+            
+            full_text = header + text
+            
+            # Handle media groups (multiple photos)
+            if media_type == "media_group" and media_file_id:
+                await self._send_media_group_post(user_id, full_text, post, lang, channel_username, media_file_id)
+            elif media_type == "photo":
+                await self._send_photo_post(user_id, full_text, post, lang, channel_username, msg_id)
             else:
                 await self._send_text_post(user_id, full_text, post, lang)
             
@@ -143,6 +135,49 @@ class RealtimeFeedService:
             reply_markup=get_feed_post_keyboard(post.get("id"), lang),
             tag="realtime_post"
         )
+    
+    async def _send_photo_post(
+        self, user_id: int, text: str, post: dict, lang: str,
+        channel_username: str, msg_id: int
+    ):
+        """Send a post with a single photo."""
+        try:
+            user_bot = get_user_bot()
+            photo_bytes = await user_bot.get_photo(channel_username, msg_id)
+            
+            if photo_bytes:
+                await self.message_manager.send_regular(
+                    chat_id=user_id,
+                    text=text[:1024],  # Caption limit
+                    reply_markup=get_feed_post_keyboard(post.get("id"), lang),
+                    photo_bytes=photo_bytes,
+                    photo_filename=f"{msg_id}.jpg",
+                    tag="realtime_post"
+                )
+            else:
+                # Fallback to text if photo unavailable
+                await self._send_text_post(user_id, text, post, lang)
+        except Exception as e:
+            logger.warning(f"Failed to send photo, falling back to text: {e}")
+            await self._send_text_post(user_id, text, post, lang)
+    
+    async def _send_media_group_post(
+        self, user_id: int, text: str, post: dict, lang: str,
+        channel_username: str, media_file_id: str
+    ):
+        """Send a post with multiple photos (media group) - sends first photo with caption."""
+        try:
+            # For media groups, send the first photo with the caption
+            msg_ids = [int(mid) for mid in media_file_id.split(",")]
+            first_msg_id = msg_ids[0] if msg_ids else None
+            
+            if first_msg_id:
+                await self._send_photo_post(user_id, text, post, lang, channel_username, first_msg_id)
+            else:
+                await self._send_text_post(user_id, text, post, lang)
+        except Exception as e:
+            logger.warning(f"Failed to send media group, falling back to text: {e}")
+            await self._send_text_post(user_id, text, post, lang)
 
 
 # Webhook endpoint for user-bot to notify about new posts

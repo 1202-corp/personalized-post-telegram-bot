@@ -113,6 +113,7 @@ async def main():
     async def handle_new_post(data: dict):
         """Handle new post notification from user-bot via Redis."""
         channel_username = data.get("channel_username", "")
+        channel_title = data.get("channel_title", "")
         post_id = data.get("post_id")
         
         logger.info(f"Received new_post from @{channel_username}, post_id={post_id}")
@@ -134,11 +135,15 @@ async def main():
                 logger.debug(f"No users subscribed to @{channel_username}")
                 return
             
-            # Get post details
+            # Get post details from API
             post = await api.get_post(post_id)
             if not post:
                 logger.warning(f"Post {post_id} not found in API")
                 return
+            
+            # Add channel info from Redis event (not in API response)
+            post["channel_username"] = channel_username
+            post["channel_title"] = channel_title
             
             # Initialize realtime feed service
             feed_service = RealtimeFeedService(bot, message_manager)

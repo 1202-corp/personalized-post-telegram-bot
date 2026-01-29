@@ -102,8 +102,6 @@ class NotificationService:
                 "post_id": post_id,
             }
             
-            # Publish twice for reliability (as in original code)
-            await redis_client.publish("ppp:new_posts", json.dumps(event_data))
             await redis_client.publish("ppp:new_posts", json.dumps(event_data))
             await redis_client.close()
             

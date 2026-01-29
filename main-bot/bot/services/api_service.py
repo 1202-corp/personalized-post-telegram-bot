@@ -7,7 +7,7 @@ This module provides a unified interface to all API services.
 import logging
 import json
 import base64
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import httpx
 import redis.asyncio as aioredis
 from bot.core.config import get_settings
@@ -242,6 +242,17 @@ class UserBotClient:
         except Exception as e:
             logger.error(f"Error fetching full post content for {channel_username}#{message_id}: {e}")
             return None
+    
+    async def get_media_group_photos(
+        self, channel_username: str, message_ids: List[int]
+    ) -> List[bytes]:
+        """Fetch photos for a media group (multiple messages)."""
+        photos = []
+        for msg_id in message_ids:
+            photo = await self.get_photo(channel_username, msg_id)
+            if photo:
+                photos.append(photo)
+        return photos
     
     async def health_check(self) -> bool:
         """Check if user-bot is healthy."""
