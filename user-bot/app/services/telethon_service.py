@@ -2,6 +2,7 @@
 Telethon service for Telegram channel operations.
 """
 import asyncio
+import io
 import logging
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -390,6 +391,43 @@ class TelethonService:
             "message": message
         }
     
+    async def get_channel_avatar_bytes(self, username: str) -> Optional[bytes]:
+        """Download channel profile photo as bytes. Returns None if no photo or on error."""
+        await self.ensure_connected()
+        username = username.lstrip("@")
+        try:
+            entity = await self._get_channel_entity(username)
+            if not entity:
+                return None
+            buf = io.BytesIO()
+            result = await self._client.download_profile_photo(entity, file=buf)
+            if not result:
+                return None
+            buf.seek(0)
+            return buf.read()
+        except Exception as e:
+            logger.debug(f"Could not get channel avatar for @{username}: {e}")
+            return None
+
+    async def get_channel_description(self, username: str) -> Optional[str]:
+        """Get channel description (bio/about) via GetFullChannelRequest. Returns None if none or on error."""
+        await self.ensure_connected()
+        username = username.lstrip("@")
+        try:
+            entity = await self._get_channel_entity(username)
+            if not entity:
+                return None
+            result = await self._client(GetFullChannelRequest(entity))
+            if not result:
+                return None
+            # messages.ChatFull has full_chat (ChannelFull for channels); ChannelFull has about
+            full = getattr(result, "full_chat", result)
+            about = getattr(full, "about", None)
+            return (about or "").strip() or None
+        except Exception as e:
+            logger.debug(f"Could not get channel description for @{username}: {e}")
+            return None
+
     # Helper methods for MediaService
     async def _get_entity(self, username: str):
         """Get entity by username (for MediaService)."""

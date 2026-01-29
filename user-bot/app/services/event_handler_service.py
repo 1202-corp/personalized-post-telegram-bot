@@ -103,7 +103,18 @@ class EventHandlerService:
                     channel_title,
                     post_data
                 )
-                
+                # Save channel avatar and description on sync (idempotent overwrite)
+                try:
+                    avatar_bytes = await self.telethon_service.get_channel_avatar_bytes(channel_username)
+                    if avatar_bytes:
+                        await self.sync_service.upload_channel_avatar(channel_id, avatar_bytes)
+                except Exception as av_err:
+                    logger.debug(f"Channel avatar upload skipped for @{channel_username}: {av_err}")
+                try:
+                    description = await self.telethon_service.get_channel_description(channel_username)
+                    await self.sync_service.set_channel_description(channel_id, description)
+                except Exception as desc_err:
+                    logger.debug(f"Channel description upload skipped for @{channel_username}: {desc_err}")
                 # Notify main-bot via Redis for instant delivery
                 await self.notification_service.notify_realtime_post(
                     channel_id,
@@ -234,7 +245,17 @@ class EventHandlerService:
             channel_title,
             post_data
         )
-        
+        try:
+            avatar_bytes = await self.telethon_service.get_channel_avatar_bytes(channel_username)
+            if avatar_bytes:
+                await self.sync_service.upload_channel_avatar(channel_id, avatar_bytes)
+        except Exception as av_err:
+            logger.debug(f"Channel avatar upload skipped for @{channel_username}: {av_err}")
+        try:
+            description = await self.telethon_service.get_channel_description(channel_username)
+            await self.sync_service.set_channel_description(channel_id, description)
+        except Exception as desc_err:
+            logger.debug(f"Channel description upload skipped for @{channel_username}: {desc_err}")
         # Notify main-bot
         await self.notification_service.notify_realtime_post(
             channel_id,

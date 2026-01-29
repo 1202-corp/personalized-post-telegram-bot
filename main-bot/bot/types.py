@@ -28,7 +28,6 @@ class ChannelData(TypedDict, total=False):
     id: int
     username: str
     title: str
-    is_for_training: bool
     is_bonus: bool
     created_at: Optional[str]
 
@@ -40,9 +39,8 @@ class UserData(TypedDict, total=False):
     first_name: Optional[str]
     last_name: Optional[str]
     status: str
-    is_trained: bool
+    user_role: Optional[str]
     bonus_channels_count: int
-    initial_best_post_sent: bool
     language: Optional[str]
     created_at: Optional[str]
 
@@ -99,7 +97,6 @@ class APIServiceProtocol(Protocol):
         status: Optional[str] = None,
         user_role: Optional[str] = None,
         bonus_channels_count: Optional[int] = None,
-        initial_best_post_sent: Optional[bool] = None,
     ) -> Optional[UserData]:
         """Update user fields."""
         ...

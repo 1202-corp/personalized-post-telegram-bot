@@ -57,7 +57,6 @@ async def start_full_retrain(
             await api.channels.add_user_channel(
                 user_id,
                 channel_username,
-                is_for_training=True,
                 is_bonus=False
             )
 
@@ -71,7 +70,7 @@ async def start_full_retrain(
 
     scrape_tasks = []
     for channel in channels_to_scrape[:3]:
-        scrape_tasks.append(user_bot.scrape_channel(channel, limit=settings.posts_per_channel))
+        scrape_tasks.append(user_bot.scrape_channel(channel, limit=settings.training_recent_posts_per_channel))
 
     await asyncio.gather(*scrape_tasks, return_exceptions=True)
 
@@ -101,7 +100,6 @@ async def start_bonus_training(
     user_bot = get_user_bot()
 
     await api.update_activity(user_id)
-    await api.create_log(user_id, "bonus_training_started", username)
     await api.update_user(user_id, status="training")
 
     lang = await _get_user_lang(user_id)
@@ -114,7 +112,7 @@ async def start_bonus_training(
     )
 
     try:
-        await user_bot.scrape_channel(username, limit=settings.posts_per_channel)
+        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
     except Exception:
         pass
 
@@ -165,10 +163,12 @@ async def on_confirm_bonus_training(
     if not posts:
         await state.clear()
         from bot.core import get_feed_keyboard
+        channels = await api.get_user_channels_with_meta(user_id)
+        mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
         await message_manager.send_system(
             chat_id,
             texts.get("bonus_training_no_posts", username=username),
-            reply_markup=get_feed_keyboard(lang, has_bonus_channel=False),
+            reply_markup=get_feed_keyboard(lang, has_bonus_channel=False, mailing_any_on=mailing_any_on),
             tag="menu",
         )
         return
@@ -226,7 +226,6 @@ async def on_confirm_retrain(
             await api.channels.add_user_channel(
                 user_id,
                 channel_username,
-                is_for_training=True,
                 is_bonus=False
             )
 

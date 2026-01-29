@@ -47,8 +47,6 @@ async def on_web_app_data(
     
     if action == "training_complete":
         rated_count = data.get("rated_count", 0)
-        await api.create_log(user_id, "miniapp_training_complete", f"rated_count={rated_count}")
-        
         existing_state = await state.get_data()
         is_bonus_training = existing_state.get("is_bonus_training", False)
         is_retrain = existing_state.get("is_retrain", False)
@@ -68,7 +66,6 @@ async def on_web_app_data(
         
         if post_id and interaction_type and interaction_type != "skip":
             await api.create_interaction(user_id, post_id, interaction_type)
-            await api.create_log(user_id, f"miniapp_post_{interaction_type}", f"post_id={post_id}")
     
     else:
         logger.warning(f"Unknown web_app_data action: {action}")
@@ -85,7 +82,6 @@ async def on_start_training(
     user_bot = get_user_bot()
     user_id = callback.from_user.id
     await api.update_activity(user_id)
-    await api.create_log(user_id, "start_training_clicked")
     
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
@@ -111,9 +107,10 @@ async def on_start_training(
     
     channels_to_scrape = [f"@{ch}" for ch in channels_set]
     
+    user_bot = get_user_bot()
     scrape_tasks = []
     for channel in channels_to_scrape[:3]:
-        task = user_bot.scrape_channel(channel, limit=settings.posts_per_channel)
+        task = user_bot.scrape_channel(channel, limit=settings.training_recent_posts_per_channel)
         scrape_tasks.append(task)
     
     await asyncio.gather(*scrape_tasks, return_exceptions=True)
@@ -159,7 +156,6 @@ async def on_confirm_training(
     
     await api.update_activity(user_id)
     await api.update_user(user_id, status="training")
-    await api.create_log(user_id, "training_started")
     
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
@@ -205,10 +201,17 @@ async def on_confirm_training(
     if not posts:
         lang = await _get_user_lang(user_id)
         texts = get_texts(lang)
+        await message_manager.send_toast(
+            callback,
+            text=texts.get("services_unavailable", "Sorry, services are unavailable. Please try again later."),
+            show_alert=True,
+        )
+        from bot.core import get_start_keyboard
+        name = html.escape(callback.from_user.first_name or "there")
         await message_manager.send_system(
             callback.message.chat.id,
-            texts.get("no_posts_training"),
-            reply_markup=get_onboarding_keyboard(lang),
+            texts.get("welcome", name=name),
+            reply_markup=get_start_keyboard(lang),
             tag="menu"
         )
         return
@@ -324,9 +327,8 @@ async def on_channel_input(
     join_result = await user_bot.join_channel(username)
     
     if join_result and join_result.get("success"):
-        await user_bot.scrape_channel(username, limit=settings.posts_per_channel)
-        await api.add_user_channel(user_id, username, is_for_training=True)
-        await api.create_log(user_id, "channel_added", username)
+        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
+        await api.add_user_channel(user_id, username, is_bonus=False)
         
         await message_manager.delete_temporary(message.chat.id, tag="loading")
         await message_manager.send_temporary(

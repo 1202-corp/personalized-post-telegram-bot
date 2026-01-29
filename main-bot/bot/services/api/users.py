@@ -71,7 +71,6 @@ class UserService(BaseAPIClient):
         status: Optional[str] = None,
         user_role: Optional[str] = None,
         bonus_channels_count: Optional[int] = None,
-        initial_best_post_sent: Optional[bool] = None,
     ) -> Optional[Dict[str, Any]]:
         """Update user fields."""
         data = {}
@@ -81,8 +80,6 @@ class UserService(BaseAPIClient):
             data["user_role"] = user_role
         if bonus_channels_count is not None:
             data["bonus_channels_count"] = bonus_channels_count
-        if initial_best_post_sent is not None:
-            data["initial_best_post_sent"] = initial_best_post_sent
         
         return await self._handle_request(
             f"updating user {telegram_id}",
@@ -103,27 +100,6 @@ class UserService(BaseAPIClient):
             return response.status_code == 204
         except Exception as e:
             logger.error(f"Error updating activity: {e}")
-            return False
-    
-    async def create_log(
-        self,
-        telegram_id: int,
-        action: str,
-        details: Optional[str] = None
-    ) -> bool:
-        """Create a user activity log."""
-        try:
-            response = await self.client.post(
-                f"{self.base_url}/api/v1/users/logs",
-                json={
-                    "user_telegram_id": telegram_id,
-                    "action": action,
-                    "details": details,
-                }
-            )
-            return response.status_code == 201
-        except Exception as e:
-            logger.error(f"Error creating log: {e}")
             return False
     
     async def get_user_language(self, telegram_id: int) -> str:
@@ -167,4 +143,12 @@ class UserService(BaseAPIClient):
         except Exception as e:
             logger.error(f"Error deleting user {telegram_id}: {e}")
             return False
+
+    async def get_feed_eligible(self, telegram_id: int) -> Optional[Dict[str, Any]]:
+        """Check if user is eligible for feed and mailing (has taste cluster, TRAINED/ACTIVE)."""
+        return await self._handle_request(
+            f"getting feed eligible for {telegram_id}",
+            lambda: self.client.get(f"{self.base_url}/api/v1/users/{telegram_id}/feed-eligible"),
+            None,
+        )
 

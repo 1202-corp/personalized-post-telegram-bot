@@ -81,7 +81,21 @@ class MessageManager:
             if existing:
                 try:
                     if photo or photo_bytes:
-                        # Can't edit photo, need to recreate
+                        # Existing may be photo message — try editing caption to avoid recreating
+                        try:
+                            await self.bot.edit_message_caption(
+                                chat_id=chat_id,
+                                message_id=existing.message_id,
+                                caption=text,
+                                reply_markup=reply_markup,
+                                parse_mode=ParseMode.HTML,
+                            )
+                            return None  # Edited in place, avatar preserved
+                        except TelegramBadRequest as cap_e:
+                            if "message is not modified" in str(cap_e).lower():
+                                return None
+                            # Existing is text or caption edit failed, recreate
+                            pass
                         new_message = await self._send_new_system(
                             chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
                         )
@@ -101,7 +115,20 @@ class MessageManager:
                 except TelegramBadRequest as e:
                     if "message is not modified" in str(e).lower():
                         return None  # Same content, no change needed
-                    # Error editing, recreate
+                    # Message may be photo — try edit_message_caption before recreating
+                    try:
+                        await self.bot.edit_message_caption(
+                            chat_id=chat_id,
+                            message_id=existing.message_id,
+                            caption=text,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML,
+                        )
+                        return None
+                    except TelegramBadRequest:
+                        pass
+                    except Exception:
+                        pass
                     logger.warning(f"Failed to edit system message, recreating: {e}")
                     new_message = await self._send_new_system(
                         chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
@@ -371,7 +398,9 @@ class MessageManager:
                 return True
             return False
         
-        # Try to edit existing
+        # Try to edit existing (text message only). If existing is a photo message,
+        # edit_message_text fails — then we must recreate (delete photo msg, send text)
+        # so the avatar disappears when going back from channel detail.
         try:
             await self.bot.edit_message_text(
                 text=text,
@@ -384,8 +413,9 @@ class MessageManager:
         except TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 return True  # Same content, considered success
-            # Error editing, recreate
-            logger.warning(f"Failed to edit system message, recreating: {e}")
+            # Existing message has media (e.g. photo); we want text-only. Do not
+            # edit_message_caption (that would keep the photo). Recreate instead.
+            logger.debug(f"System message is not plain text, recreating: {e}")
             new_message = await self._send_new_system(
                 chat_id, text, reply_markup, tag, None, None, "photo.jpg"
             )

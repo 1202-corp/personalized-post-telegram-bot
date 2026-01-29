@@ -45,9 +45,7 @@ async def cmd_start(message: Message, message_manager: MessageManager):
         language_code=user.language_code,  # Telegram interface language
     )
     
-    # Log activity
     await api.update_activity(user.id)
-    await api.create_log(user.id, "command_start")
     
     if not user_data:
         lang = await api.get_user_language(user.id)
@@ -90,11 +88,23 @@ async def cmd_start(message: Message, message_manager: MessageManager):
         # Member или Admin: пользователь прошёл тренировку и пользуется сервисом
         if status != "active":
             await api.update_user(user.id, status="active")
+        feed_eligible = await api.get_feed_eligible(user.id)
+        if not (feed_eligible and feed_eligible.get("eligible")):
+            await message_manager.send_system(
+                message.chat.id,
+                texts.get("feed_complete_training_first", "Complete training first to unlock your feed and mailing."),
+                reply_markup=get_start_keyboard(lang),
+                tag="menu",
+                is_start=True
+            )
+            return
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
+        channels = await api.get_user_channels_with_meta(user.id)
+        mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
         await message_manager.send_system(
             message.chat.id,
             texts.get("welcome_back", name=name),
-            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus),
+            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus, mailing_any_on=mailing_any_on),
             tag="menu",
             is_start=True
         )
@@ -140,9 +150,10 @@ async def cmd_status(message: Message, message_manager: MessageManager):
         )
         return
     
+    trained_display = "✅" if user_data.get("user_role") in ("member", "admin") else "❌"
     status_text = texts.get("status",
         status=user_data.get("status", "unknown"),
-        is_trained="✅" if user_data.get("user_role") in ("member", "admin") else "❌",
+        trained=trained_display,
         bonus_channels=user_data.get("bonus_channels_count", 0),
     )
     

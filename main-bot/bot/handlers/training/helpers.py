@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import Optional, List
 
 from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
@@ -555,35 +556,34 @@ async def finish_training_flow(chat_id: int, message_manager: MessageManager, st
         except Exception as e:
             logger.error(f"Error starting bonus nudge watcher for user {user_id}: {e}")
 
-        # отправить один лучший пост через минуту после обучения
+        # Send one best post from M−N (posts not shown in training) after a short delay
+        exclude_post_ids = [p.get("id") for p in training_posts if p.get("id") is not None]
         async def delayed_best_post():
             await asyncio.sleep(60)  # Wait 1 minute
             try:
-                await send_initial_best_post(chat_id, user_id, message_manager)
+                await send_initial_best_post(chat_id, user_id, message_manager, exclude_post_ids)
             except Exception as e:
-                logger.error(f"Error sending initial best post after training for user {user_id}: {e}")
+                logger.error(f"Error sending best post after training for user {user_id}: {e}")
         
         asyncio.create_task(delayed_best_post())
 
     await state.clear()
 
-    if is_retrain or is_bonus_training or user_has_bonus:
-        # After retraining, bonus training, or if bonus already claimed – go straight to feed
-        logger.info(f"Sending feed_ready to chat_id={chat_id} (is_retrain={is_retrain}, is_bonus={is_bonus_training})")
-        await message_manager.send_system(
-            chat_id,
-            texts.get("feed_ready"),
-            reply_markup=get_feed_keyboard(lang, has_bonus_channel=user_has_bonus),
-            tag="menu",
-        )
-    else:
-        logger.info(f"Sending training_complete to chat_id={chat_id}, rated_count={rated_count}")
-        await message_manager.send_system(
-            chat_id,
-            texts.get("training_complete", rated_count=rated_count),
-            reply_markup=get_training_complete_keyboard(lang),
-            tag="menu",
-        )
+    # По плану: после тренировки вызывается системно стартовое сообщение для зарегистрированного
+    name = "there"
+    if user_id:
+        user_data = await api.get_user(user_id)
+        if user_data and user_data.get("first_name"):
+            name = user_data["first_name"]
+    name = html.escape(name)
+    channels = await api.get_user_channels_with_meta(user_id) if user_id else []
+    mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
+    await message_manager.send_system(
+        chat_id,
+        texts.get("welcome_back", name=name),
+        reply_markup=get_feed_keyboard(lang, has_bonus_channel=user_has_bonus, mailing_any_on=mailing_any_on),
+        tag="menu",
+    )
     logger.info(f"finish_training_flow completed for chat_id={chat_id}")
 
 
@@ -591,11 +591,12 @@ async def send_initial_best_post(
     chat_id: int,
     user_id: int,
     message_manager: MessageManager,
+    exclude_post_ids: Optional[List[int]] = None,
 ) -> None:
-    """Train ML model and send a single best recent post once after training.
+    """Send one best post from M−N (posts not shown in training) after training.
 
-    Uses the same best-post logic as the feed, but triggers immediately after training
-    to show the user value without requiring extra button presses.
+    Uses get_best_posts with exclude_post_ids so we only send a post that was not
+    in the training queue. If M−N is 0 or no candidate, nothing is sent.
     """
     from aiogram.types import InputMediaPhoto, BufferedInputFile, LinkPreviewOptions
     from bot.core import get_feed_post_keyboard
@@ -608,15 +609,9 @@ async def send_initial_best_post(
     if not user_data:
         return
 
-    # Don't send posts if user is in training mode
     if user_data.get("status") == "training":
         return
 
-    if user_data.get("initial_best_post_sent", False):
-        # Already sent once, do not spam
-        return
-
-    # Train ML model (mock) so relevance scores are available
     result = await api.train_model(user_id)
     if not result or not result.get("success"):
         logger.warning(
@@ -625,29 +620,11 @@ async def send_initial_best_post(
             (result or {}).get("message"),
         )
 
-    all_posts = await api.get_best_posts(user_id, limit=10)
+    all_posts = await api.get_best_posts(user_id, limit=1, exclude_post_ids=exclude_post_ids or [])
     if not all_posts:
         return
 
-    now = datetime.utcnow()
-    three_days_ago = now - timedelta(days=3)
-
-    initial_best_post = None
-    for post in all_posts:
-        posted_at_raw = post.get("posted_at")
-        try:
-            posted_at = datetime.fromisoformat(posted_at_raw) if posted_at_raw else None
-            # Make offset-naive for comparison with utcnow()
-            if posted_at and posted_at.tzinfo is not None:
-                posted_at = posted_at.replace(tzinfo=None)
-        except Exception:
-            posted_at = None
-        if posted_at and posted_at >= three_days_ago:
-            initial_best_post = post
-            break
-
-    if not initial_best_post:
-        initial_best_post = all_posts[0]
+    initial_best_post = all_posts[0]
 
     # Send this post similarly to feed posts (with rating buttons)
     channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
@@ -805,6 +782,4 @@ async def send_initial_best_post(
                 tag="feed_post_buttons",
             )
 
-    # Mark as sent so we don't send again
-    await api.update_user(user_id, initial_best_post_sent=True)
 

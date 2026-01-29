@@ -17,6 +17,8 @@ from bot.handlers import commands
 from bot.handlers.training import router as training_router
 from bot.handlers.feed import router as feed_router
 from bot.redis_subscriber import RedisSubscriber
+from bot.realtime_feed import RealtimeFeedService
+from bot.new_posts_subscriber import start_new_posts_subscriber
 
 # Configure logging
 setup_logging(
@@ -32,6 +34,7 @@ settings = get_settings()
 redis_client = None
 heartbeat_task = None
 redis_subscriber: RedisSubscriber | None = None
+new_posts_task = None
 
 async def heartbeat_loop():
     """Send heartbeat to Redis every 30 seconds."""
@@ -168,17 +171,18 @@ async def main():
     
     # Startup event
     async def on_startup():
-        global heartbeat_task, redis_subscriber
+        global heartbeat_task, redis_subscriber, new_posts_task
         logger.info("Bot starting up...")
         # Start heartbeat
         heartbeat_task = asyncio.create_task(heartbeat_loop())
-        
-        # Start Redis subscriber
+        # Redis subscriber for training_complete (MiniApp flow)
         redis_url = os.getenv("REDIS_URL", "redis://redis:6379/1")
         redis_subscriber = RedisSubscriber(redis_url)
         redis_subscriber.register_handler("ppp:training_complete", handle_training_complete)
-        redis_subscriber.register_handler("ppp:new_posts", handle_new_post)
         await redis_subscriber.start()
+        # New-posts subscriber (taste-filtered delivery)
+        feed_service = RealtimeFeedService(bot, message_manager)
+        new_posts_task = start_new_posts_subscriber(feed_service)
         # Set bot commands
         from aiogram.types import BotCommand
         await bot.set_my_commands([
@@ -191,11 +195,16 @@ async def main():
     
     # Shutdown event
     async def on_shutdown():
-        global heartbeat_task, redis_subscriber
+        global heartbeat_task, redis_subscriber, new_posts_task
         logger.info("Bot shutting down...")
-        # Stop Redis subscriber
         if redis_subscriber:
             await redis_subscriber.stop()
+        if new_posts_task:
+            new_posts_task.cancel()
+            try:
+                await new_posts_task
+            except asyncio.CancelledError:
+                pass
         # Stop heartbeat
         if heartbeat_task:
             heartbeat_task.cancel()
