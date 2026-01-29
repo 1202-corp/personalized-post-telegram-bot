@@ -99,6 +99,9 @@ class CoreAPIClient:
     async def get_post(self, *args, **kwargs):
         return await self.posts.get_post(*args, **kwargs)
     
+    async def delete_user(self, *args, **kwargs):
+        return await self.users.delete_user(*args, **kwargs)
+    
     async def get_users_by_channel(self, channel_username: str):
         """Get users subscribed to a channel (via user channels)."""
         return await self.channels.get_users_by_channel(channel_username)
