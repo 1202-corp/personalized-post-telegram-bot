@@ -78,6 +78,7 @@ async def on_rate_post(
     dislikes_count = int(data.get("dislikes_count", 0))
     skips_count = int(data.get("skips_count", 0))
     rated_count = int(data.get("rated_count", 0))  # Track total rated posts
+    initial_queue_size = int(data.get("initial_queue_size", len(queue)))  # For progress display
     extra_from_dislike_used = int(data.get("extra_from_dislike_used", 0))
     extra_from_skip_used = int(data.get("extra_from_skip_used", 0))
     interactions_buffer = data.get("interactions_buffer", [])
@@ -106,6 +107,7 @@ async def on_rate_post(
                 new_idx = choice(available_indices)
                 queue.append(new_idx)
                 extra_from_dislike_used += 1
+                initial_queue_size += 1  # Increase total for progress display
                 logger.info(f"Added extra post index {new_idx} to queue, new queue size={len(queue)}")
     elif action == "skip":
         skips_count += 1
@@ -114,6 +116,7 @@ async def on_rate_post(
             if available_indices:
                 queue.append(choice(available_indices))
                 extra_from_skip_used += 1
+                initial_queue_size += 1  # Increase total for progress display
     
     # Если очередь опустела — заканчиваем
     if not queue:
@@ -121,6 +124,7 @@ async def on_rate_post(
             training_queue=queue,
             shown_indices=list(shown_indices),
             rated_count=rated_count,
+            initial_queue_size=initial_queue_size,
             likes_count=likes_count,
             dislikes_count=dislikes_count,
             skips_count=skips_count,
@@ -137,6 +141,7 @@ async def on_rate_post(
         training_queue=queue,
         shown_indices=list(shown_indices),
         rated_count=rated_count,
+        initial_queue_size=initial_queue_size,
         likes_count=likes_count,
         dislikes_count=dislikes_count,
         skips_count=skips_count,

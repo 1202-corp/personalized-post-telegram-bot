@@ -183,6 +183,7 @@ async def on_confirm_bonus_training(
         current_post_index=0,
         rated_count=0,
         training_queue=initial_queue,
+        initial_queue_size=len(initial_queue),  # Save initial size for progress display
         shown_indices=[],
         likes_count=0,
         dislikes_count=0,
@@ -278,6 +279,7 @@ async def on_confirm_retrain(
         current_post_index=0,
         rated_count=0,
         training_queue=initial_queue,
+        initial_queue_size=len(initial_queue),  # Save initial size for progress display
         shown_indices=[],
         likes_count=0,
         dislikes_count=0,
