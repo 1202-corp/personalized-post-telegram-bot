@@ -243,17 +243,11 @@ async def show_training_post(chat_id: int, message_manager: MessageManager, stat
                     _prefetch_post_content(next_post_id, next_channel_username, next_msg_id)
                 )
     
-    # Build post text with hyperlink to original (HTML format) - WITHOUT progress info
-    # Calculate progress: current position in queue or index
-    if queue:
-        progress_current = len(posts) - len(queue) + 1
-    else:
-        progress_current = index + 1
-    text = f"📰 <b>{texts.get('post_label', default='Post')} {progress_current}/{len(posts)}</b>\n"
+    # Build post text with hyperlink to original (HTML format) - WITHOUT progress counter
     if channel_username and msg_id:
-        text += f"{texts.get('from_label', default='From')}: <a href=\"https://t.me/{channel_username}/{msg_id}\">{channel_title}</a>\n\n"
+        text = f"📰 {texts.get('from_label', default='From')}: <a href=\"https://t.me/{channel_username}/{msg_id}\">{channel_title}</a>\n\n"
     else:
-        text += f"{texts.get('from_label', default='From')}: {channel_title}\n\n"
+        text = f"📰 {texts.get('from_label', default='From')}: {channel_title}\n\n"
     text += post_text if post_text else "<i>[Media content]</i>"
     # Telegram counts caption length without HTML tags
     from bot.utils import get_html_text_length

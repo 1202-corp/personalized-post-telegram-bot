@@ -195,11 +195,11 @@ async def on_confirm_training(
     
     channels_to_use = [f"@{ch}" for ch in channels_set]
     
-    # Request posts for training from API
+    # Request posts for training from API (use training_recent_posts_per_channel for full pool)
     posts = await api.get_training_posts(
         user_id,
         channels_to_use,
-        settings.posts_per_channel,
+        settings.training_recent_posts_per_channel,
     )
     
     if not posts:
@@ -230,15 +230,25 @@ async def on_confirm_training(
             if item is not None:
                 interleaved_posts.append(item)
     
-    # Use interleaved posts as training set
+    # Use interleaved posts as training set (full pool)
     training_posts = interleaved_posts
+    
+    # Initial queue: only first N posts per channel (interleaved)
+    # Reserve posts remain in pool for dislikes/skips
+    initial_per_channel = settings.training_initial_posts_per_channel
+    num_channels = len(posts_by_channel)
+    initial_queue_size = initial_per_channel * num_channels
+    initial_queue = list(range(min(initial_queue_size, len(training_posts))))
+    
+    logger.info(f"Training setup: pool={len(training_posts)}, initial_queue={len(initial_queue)}, reserve={len(training_posts) - len(initial_queue)}, channels={num_channels}")
     
     await state.update_data(
         user_id=user_id,
         training_posts=training_posts,
         current_post_index=0,
         rated_count=0,
-        training_queue=list(range(len(training_posts))),
+        training_queue=initial_queue,
+        shown_indices=[],  # Track already shown posts to prevent duplicates
         likes_count=0,
         dislikes_count=0,
         skips_count=0,

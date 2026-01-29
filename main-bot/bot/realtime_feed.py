@@ -97,7 +97,7 @@ class RealtimeFeedService:
             channel_username = post.get("channel_username", "").lstrip("@")
             channel_title = post.get("channel_title") or f"@{channel_username}"
             msg_id = post.get("telegram_message_id")
-            text = post.get("text", "")  # Already in HTML format from user-bot
+            text = post.get("text") or ""  # Already in HTML format from user-bot
             media_type = post.get("media_type")
             media_file_id = post.get("media_file_id")
             

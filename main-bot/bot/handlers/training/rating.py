@@ -73,9 +73,11 @@ async def on_rate_post(
     
     training_posts = data.get("training_posts", [])
     queue = data.get("training_queue", [])
+    shown_indices = set(data.get("shown_indices", []))  # Track already shown posts
     likes_count = int(data.get("likes_count", 0))
     dislikes_count = int(data.get("dislikes_count", 0))
     skips_count = int(data.get("skips_count", 0))
+    rated_count = int(data.get("rated_count", 0))  # Track total rated posts
     extra_from_dislike_used = int(data.get("extra_from_dislike_used", 0))
     extra_from_skip_used = int(data.get("extra_from_skip_used", 0))
     interactions_buffer = data.get("interactions_buffer", [])
@@ -87,6 +89,8 @@ async def on_rate_post(
         return
     
     current_index = queue.pop(0)
+    shown_indices.add(current_index)  # Mark as shown
+    rated_count += 1  # Increment rated count
     
     if action == "like":
         likes_count += 1
@@ -95,15 +99,18 @@ async def on_rate_post(
         dislikes_count += 1
         interactions_buffer.append({"post_id": post_id, "interaction_type": "dislike"})
         if extra_from_dislike_used < settings.training_max_extra_from_dislike:
-            # Добавляем случайный новый пост из пула, который ещё не в очереди
-            available_indices = [i for i in range(len(training_posts)) if i not in queue and i != current_index]
+            # Добавляем случайный новый пост из пула, который ещё не показан и не в очереди
+            available_indices = [i for i in range(len(training_posts)) if i not in queue and i not in shown_indices]
+            logger.info(f"Dislike: pool={len(training_posts)}, queue={len(queue)}, shown={len(shown_indices)}, available={len(available_indices)}, extra_used={extra_from_dislike_used}")
             if available_indices:
-                queue.append(choice(available_indices))
+                new_idx = choice(available_indices)
+                queue.append(new_idx)
                 extra_from_dislike_used += 1
+                logger.info(f"Added extra post index {new_idx} to queue, new queue size={len(queue)}")
     elif action == "skip":
         skips_count += 1
         if extra_from_skip_used < settings.training_max_extra_from_skip:
-            available_indices = [i for i in range(len(training_posts)) if i not in queue and i != current_index]
+            available_indices = [i for i in range(len(training_posts)) if i not in queue and i not in shown_indices]
             if available_indices:
                 queue.append(choice(available_indices))
                 extra_from_skip_used += 1
@@ -112,6 +119,8 @@ async def on_rate_post(
     if not queue:
         await state.update_data(
             training_queue=queue,
+            shown_indices=list(shown_indices),
+            rated_count=rated_count,
             likes_count=likes_count,
             dislikes_count=dislikes_count,
             skips_count=skips_count,
@@ -126,6 +135,8 @@ async def on_rate_post(
     # Обновляем стейт и показываем следующий пост
     await state.update_data(
         training_queue=queue,
+        shown_indices=list(shown_indices),
+        rated_count=rated_count,
         likes_count=likes_count,
         dislikes_count=dislikes_count,
         skips_count=skips_count,
