@@ -171,31 +171,35 @@ async def on_confirm_training(
     
     # Build list of channels to use for training (defaults + user channels)
     default_channels = settings.default_training_channels.split(",")
-    channels_to_use = [ch.strip() for ch in default_channels if ch.strip()]
+    channels_set = set()
     
-    # Add default channels to user's channel list if not already added
-    # This ensures users keep their training channels even if defaults change in .env
-    for default_channel in default_channels:
-        channel_username = default_channel.strip().lstrip("@")
-        if channel_username:
-            # Try to add as training channel (will be ignored if already exists)
+    # Add default channels
+    for ch in default_channels:
+        ch_clean = ch.strip().lstrip("@").lower()
+        if ch_clean:
+            channels_set.add(ch_clean)
+            # Add to user's channel list if not already added
             await api.channels.add_user_channel(
                 user_id,
-                channel_username,
+                ch_clean,
                 is_for_training=True,
                 is_bonus=False
             )
     
+    # Add user's own channels
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
-        if ch.get("username"):
-            channels_to_use.append(f"@{ch['username']}")
+        username = ch.get("username")
+        if username:
+            channels_set.add(username.lower())
     
-    # Request recent posts for training from API (without pulling media here)
+    channels_to_use = [f"@{ch}" for ch in channels_set]
+    
+    # Request posts for training from API
     posts = await api.get_training_posts(
         user_id,
         channels_to_use,
-        settings.training_recent_posts_per_channel,
+        settings.posts_per_channel,
     )
     
     if not posts:
@@ -209,15 +213,25 @@ async def on_confirm_training(
         )
         return
     
-    # Build training pool of N posts according to env limits
-    max_pool_size = (
-        settings.training_base_posts_count
-        + settings.training_max_extra_from_dislike
-        + settings.training_max_extra_from_skip
-    )
-    from random import sample
-    pool_size = min(len(posts), settings.training_recent_posts_per_channel, max_pool_size)
-    training_posts = sample(posts, pool_size) if len(posts) > pool_size else posts
+    # Interleave posts from different channels for variety
+    from itertools import zip_longest
+    posts_by_channel = {}
+    for post in posts:
+        ch_name = post.get("channel_username", "unknown")
+        if ch_name not in posts_by_channel:
+            posts_by_channel[ch_name] = []
+        posts_by_channel[ch_name].append(post)
+    
+    # Interleave: take one from each channel in round-robin
+    interleaved_posts = []
+    channel_lists = list(posts_by_channel.values())
+    for items in zip_longest(*channel_lists):
+        for item in items:
+            if item is not None:
+                interleaved_posts.append(item)
+    
+    # Use interleaved posts as training set
+    training_posts = interleaved_posts
     
     await state.update_data(
         user_id=user_id,
