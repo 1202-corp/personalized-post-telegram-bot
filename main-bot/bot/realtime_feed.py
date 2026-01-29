@@ -128,31 +128,45 @@ class RealtimeFeedService:
             logger.error(f"Error sending real-time post to user {user_id}: {e}")
     
     async def _send_text_post(self, user_id: int, text: str, post: dict, lang: str):
-        """Send a text-only post."""
+        """Send a text-only post with buttons as separate message."""
+        # Send post without buttons
         await self.message_manager.send_regular(
             chat_id=user_id,
             text=text,
-            reply_markup=get_feed_post_keyboard(post.get("id"), lang),
             tag="realtime_post"
+        )
+        # Send buttons as separate message
+        await self.message_manager.send_regular(
+            chat_id=user_id,
+            text="👆",
+            reply_markup=get_feed_post_keyboard(post.get("id"), lang),
+            tag="realtime_post_buttons"
         )
     
     async def _send_photo_post(
         self, user_id: int, text: str, post: dict, lang: str,
         channel_username: str, msg_id: int
     ):
-        """Send a post with a single photo."""
+        """Send a post with a single photo, buttons as separate message."""
         try:
             user_bot = get_user_bot()
             photo_bytes = await user_bot.get_photo(channel_username, msg_id)
             
             if photo_bytes:
+                # Send photo without buttons
                 await self.message_manager.send_regular(
                     chat_id=user_id,
                     text=text[:1024],  # Caption limit
-                    reply_markup=get_feed_post_keyboard(post.get("id"), lang),
                     photo_bytes=photo_bytes,
                     photo_filename=f"{msg_id}.jpg",
                     tag="realtime_post"
+                )
+                # Send buttons as separate message
+                await self.message_manager.send_regular(
+                    chat_id=user_id,
+                    text="👆",
+                    reply_markup=get_feed_post_keyboard(post.get("id"), lang),
+                    tag="realtime_post_buttons"
                 )
             else:
                 # Fallback to text if photo unavailable

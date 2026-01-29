@@ -82,6 +82,7 @@ async def on_start_training(
     """Handle Start Training button - scrape posts and show MiniApp/chat choice."""
     await message_manager.send_toast(callback)
     api = get_core_api()
+    user_bot = get_user_bot()
     user_id = callback.from_user.id
     await api.update_activity(user_id)
     await api.create_log(user_id, "start_training_clicked")

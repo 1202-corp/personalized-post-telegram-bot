@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     
     # Training settings
     default_training_channels: str = "@durov,@telegram"
+    # Number of posts to scrape per channel
+    posts_per_channel: int = 7
     # Number of recent posts per channel to consider for training pool
     training_recent_posts_per_channel: int = 50
     # Base number of posts to show in a single training session
