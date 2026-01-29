@@ -155,4 +155,16 @@ class UserService(BaseAPIClient):
             lambda: self.client.get(f"{self.base_url}/api/v1/users/feed-targets"),
             []
         )
+    
+    async def delete_user(self, telegram_id: int, hard: bool = False) -> bool:
+        """Delete a user (soft or hard delete)."""
+        try:
+            response = await self.client.delete(
+                f"{self.base_url}/api/v1/users/{telegram_id}",
+                params={"hard": hard}
+            )
+            return response.status_code == 204
+        except Exception as e:
+            logger.error(f"Error deleting user {telegram_id}: {e}")
+            return False
 

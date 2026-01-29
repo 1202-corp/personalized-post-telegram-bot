@@ -82,7 +82,7 @@ class SyncService:
             for post in posts:
                 post_data.append({
                     "telegram_message_id": post["telegram_message_id"],
-                    "text": None if for_training else post.get("text"),  # Don't store text for training posts
+                    "text": post.get("text"),  # Always store text in Redis cache
                     "media_type": post.get("media_type"),
                     "media_file_id": post.get("media_file_id"),
                     "posted_at": post["posted_at"],
