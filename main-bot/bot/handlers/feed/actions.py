@@ -20,10 +20,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-async def _get_user_lang(user_id: int) -> str:
-    """Get user's language preference."""
-    api = get_core_api()
-    return await api.get_user_language(user_id)
+from bot.utils import get_user_lang as _get_user_lang
 
 
 @router.callback_query(F.data == "claim_bonus")
@@ -492,7 +489,7 @@ async def on_cancel(
     api = get_core_api()
     user_data = await api.get_user(callback.from_user.id)
     
-    if user_data and user_data.get("is_trained"):
+    if user_data and user_data.get("user_role") in ("member", "admin"):
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
         success = await message_manager.edit_system(
             callback.message.chat.id,
@@ -524,7 +521,7 @@ async def on_cancel(
             )
     elif current_state and "adding" in str(current_state).lower():
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
-        if user_data and user_data.get("is_trained"):
+        if user_data and user_data.get("user_role") in ("member", "admin"):
             success = await message_manager.edit_system(
                 callback.message.chat.id,
                 texts.get("feed_ready"),

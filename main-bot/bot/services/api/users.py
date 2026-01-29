@@ -59,47 +59,39 @@ class UserService(BaseAPIClient):
     
     async def get_user(self, telegram_id: int) -> Optional[Dict[str, Any]]:
         """Get user by telegram ID."""
-        try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/users/{telegram_id}"
-            )
-            if response.status_code == 404:
-                return None
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error getting user: {e}")
-            return None
+        return await self._handle_request(
+            f"getting user {telegram_id}",
+            lambda: self.client.get(f"{self.base_url}/api/v1/users/{telegram_id}"),
+            None
+        )
     
     async def update_user(
         self,
         telegram_id: int,
         status: Optional[str] = None,
-        is_trained: Optional[bool] = None,
+        user_role: Optional[str] = None,
         bonus_channels_count: Optional[int] = None,
         initial_best_post_sent: Optional[bool] = None,
     ) -> Optional[Dict[str, Any]]:
         """Update user fields."""
-        try:
-            data = {}
-            if status:
-                data["status"] = status
-            if is_trained is not None:
-                data["is_trained"] = is_trained
-            if bonus_channels_count is not None:
-                data["bonus_channels_count"] = bonus_channels_count
-            if initial_best_post_sent is not None:
-                data["initial_best_post_sent"] = initial_best_post_sent
-            
-            response = await self.client.patch(
+        data = {}
+        if status:
+            data["status"] = status
+        if user_role:
+            data["user_role"] = user_role
+        if bonus_channels_count is not None:
+            data["bonus_channels_count"] = bonus_channels_count
+        if initial_best_post_sent is not None:
+            data["initial_best_post_sent"] = initial_best_post_sent
+        
+        return await self._handle_request(
+            f"updating user {telegram_id}",
+            lambda: self.client.patch(
                 f"{self.base_url}/api/v1/users/{telegram_id}",
                 json=data
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error updating user: {e}")
-            return None
+            ),
+            None
+        )
     
     async def update_activity(self, telegram_id: int) -> bool:
         """Update user's last activity timestamp."""
@@ -136,16 +128,13 @@ class UserService(BaseAPIClient):
     
     async def get_user_language(self, telegram_id: int) -> str:
         """Get user's preferred language. Defaults to 'en_US'."""
-        try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/users/{telegram_id}/language"
-            )
-            if response.status_code == 200:
-                return response.json().get("language", "en_US")
-            return "en_US"
-        except Exception as e:
-            logger.error(f"Error getting user language: {e}")
-            return "en_US"
+        result = await self._handle_request(
+            f"getting user language {telegram_id}",
+            lambda: self.client.get(f"{self.base_url}/api/v1/users/{telegram_id}/language"),
+            {"language": "en_US"},
+            log_error=False  # Don't log 404 as error, it's expected for new users
+        )
+        return result.get("language", "en_US") if isinstance(result, dict) else "en_US"
     
     async def set_user_language(self, telegram_id: int, language: str) -> bool:
         """Set user's preferred language."""
@@ -161,13 +150,9 @@ class UserService(BaseAPIClient):
     
     async def get_feed_users(self) -> List[Dict[str, Any]]:
         """Get users eligible for automatic feed delivery (trained or active)."""
-        try:
-            response = await self.client.get(
-                f"{self.base_url}/api/v1/users/feed-targets"
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Error getting feed users: {e}")
-            return []
+        return await self._handle_request(
+            "getting feed users",
+            lambda: self.client.get(f"{self.base_url}/api/v1/users/feed-targets"),
+            []
+        )
 

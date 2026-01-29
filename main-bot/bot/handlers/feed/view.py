@@ -19,10 +19,7 @@ router = Router()
 _processed_feed_callbacks: set = set()
 
 
-async def _get_user_lang(user_id: int) -> str:
-    """Get user's language preference."""
-    api = get_core_api()
-    return await api.get_user_language(user_id)
+from bot.utils import get_user_lang as _get_user_lang
 
 
 @router.callback_query(F.data == "view_feed")
@@ -108,7 +105,12 @@ async def on_view_feed(
         channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
         channel_username = initial_best_post.get("channel_username", "").lstrip("@")
         message_id = initial_best_post.get("telegram_message_id")
+        
+        # Get post text - fetch from user-bot if not available (fallback)
         full_text_raw = initial_best_post.get("text") or ""
+        if not full_text_raw and channel_username and message_id:
+            user_bot = get_user_bot()
+            full_text_raw = await user_bot.get_post_text(channel_username, message_id) or ""
         text = full_text_raw  # Already HTML formatted from user-bot
         
         if channel_username and message_id:
@@ -139,7 +141,13 @@ async def on_view_feed(
         channel_title = html.escape(post.get("channel_title", "Unknown"))
         channel_username = post.get("channel_username", "").lstrip("@")
         message_id = post.get("telegram_message_id")
-        body = post.get("text") or "<i>[Media content]</i>"
+        
+        # Get post text - fetch from user-bot if not available (fallback)
+        body = post.get("text") or ""
+        if not body and channel_username and message_id:
+            user_bot = get_user_bot()
+            body = await user_bot.get_post_text(channel_username, message_id) or ""
+        body = body or "<i>[Media content]</i>"
         
         if channel_username and message_id:
             header = f"📰 <a href=\"https://t.me/{channel_username}/{message_id}\">{channel_title}</a>\n\n"

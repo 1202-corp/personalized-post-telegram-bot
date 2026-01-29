@@ -37,6 +37,7 @@ class Settings(BaseSettings):
         """Get supported languages as a list."""
         return [lang.strip() for lang in self.supported_languages.split(",") if lang.strip()]
     
+    
     class Config:
         env_file = ".env"
         extra = "ignore"
