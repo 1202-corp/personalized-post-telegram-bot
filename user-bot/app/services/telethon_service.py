@@ -201,10 +201,10 @@ class TelethonService:
             if not entity:
                 return self._create_error_result(username, "Entity is not a channel")
             
-            # Fetch messages
+            # Fetch messages: exactly `limit` (e.g. TRAINING_RECENT_POSTS_PER_CHANNEL=50 from .env)
             messages: List[Message] = await self._client.get_messages(
                 entity,
-                limit=limit * 3
+                limit=limit
             )
             
             # Process messages
