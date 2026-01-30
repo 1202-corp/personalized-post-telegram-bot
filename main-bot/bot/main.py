@@ -94,7 +94,8 @@ async def main():
         logger.info(f"Received training_complete for user {telegram_id}, rated_count={rated_count}")
         
         try:
-            from bot.handlers.training.helpers import finish_training_flow, _get_user_lang
+            from bot.handlers.training.helpers import _get_user_lang
+            from bot.handlers.training.flow import finish_training_flow
             from aiogram.fsm.context import FSMContext
             from aiogram.fsm.storage.base import StorageKey
             
