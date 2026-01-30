@@ -16,7 +16,8 @@ from bot.core import (
 from bot.core.states import TrainingStates
 from bot.services import get_core_api, get_user_bot
 import html
-from .helpers import _get_user_lang, _start_training_session, finish_training_flow
+from .helpers import _get_user_lang
+from .flow import _start_training_session, finish_training_flow
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -86,11 +87,6 @@ async def on_start_training(
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     
-    try:
-        await callback.message.edit_text(texts.get("fetching_posts"))
-    except Exception:
-        pass
-    
     default_channels = settings.default_training_channels.split(",")
     # Use set to avoid duplicates
     channels_set = set()
@@ -105,15 +101,22 @@ async def on_start_training(
         if username:
             channels_set.add(username.lower())
     
-    channels_to_scrape = [f"@{ch}" for ch in channels_set]
-    
-    user_bot = get_user_bot()
-    scrape_tasks = []
-    for channel in channels_to_scrape[:3]:
-        task = user_bot.scrape_channel(channel, limit=settings.training_recent_posts_per_channel)
-        scrape_tasks.append(task)
-    
-    await asyncio.gather(*scrape_tasks, return_exceptions=True)
+    channels_to_scrape = [f"@{ch}" for ch in channels_set][:3]
+    # Статус training — чтобы MiniApp мог загрузить посты (POST /posts/training только при status=training)
+    await api.update_user(user_id, status="training")
+    # Only scrape channels that need refresh (not in DB or metadata older than TTL)
+    need_refresh = await api.get_channels_need_refresh(channels_to_scrape)
+    if need_refresh:
+        try:
+            await callback.message.edit_text(texts.get("fetching_posts"))
+        except Exception:
+            pass
+        user_bot = get_user_bot()
+        scrape_tasks = [
+            user_bot.scrape_channel(ch, limit=settings.training_recent_posts_per_channel)
+            for ch in need_refresh
+        ]
+        await asyncio.gather(*scrape_tasks, return_exceptions=True)
     
     try:
         await callback.message.edit_text(
@@ -216,18 +219,18 @@ async def on_confirm_training(
         )
         return
     
-    # Interleave posts from different channels for variety
+    # Interleave posts from different channels: нормализуем имя канала и фиксированный порядок (сортируем по имени)
     from itertools import zip_longest
-    posts_by_channel = {}
+    def _norm_channel(name: str) -> str:
+        return (name or "unknown").strip().lstrip("@").lower()
+    posts_by_channel: dict[str, list] = {}
     for post in posts:
-        ch_name = post.get("channel_username", "unknown")
-        if ch_name not in posts_by_channel:
-            posts_by_channel[ch_name] = []
-        posts_by_channel[ch_name].append(post)
-    
-    # Interleave: take one from each channel in round-robin
+        ch_name = _norm_channel(post.get("channel_username", ""))
+        posts_by_channel.setdefault(ch_name, []).append(post)
+    # Детерминированный порядок каналов — по имени, чтобы источник всегда соответствовал посту
+    sorted_channel_names = sorted(posts_by_channel.keys())
+    channel_lists = [posts_by_channel[name] for name in sorted_channel_names]
     interleaved_posts = []
-    channel_lists = list(posts_by_channel.values())
     for items in zip_longest(*channel_lists):
         for item in items:
             if item is not None:

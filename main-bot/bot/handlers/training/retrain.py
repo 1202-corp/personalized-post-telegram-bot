@@ -11,7 +11,8 @@ from aiogram.fsm.context import FSMContext
 from bot.core import MessageManager, get_texts, get_settings
 from bot.core.states import TrainingStates
 from bot.services import get_core_api, get_user_bot
-from .helpers import _get_user_lang, _start_training_session
+from .helpers import _get_user_lang
+from .flow import _start_training_session
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -33,12 +34,6 @@ async def start_full_retrain(
 
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
-
-    await message_manager.send_system(
-        chat_id,
-        texts.get("fetching_posts"),
-        tag="menu",
-    )
 
     default_channels = settings.default_training_channels.split(",")
     # Use set to avoid duplicates
@@ -66,13 +61,20 @@ async def start_full_retrain(
         if username:
             channels_set.add(username.lower())
     
-    channels_to_scrape = [f"@{ch}" for ch in channels_set]
-
-    scrape_tasks = []
-    for channel in channels_to_scrape[:3]:
-        scrape_tasks.append(user_bot.scrape_channel(channel, limit=settings.training_recent_posts_per_channel))
-
-    await asyncio.gather(*scrape_tasks, return_exceptions=True)
+    channels_to_scrape = [f"@{ch}" for ch in channels_set][:3]
+    # Only scrape channels that need refresh (TTL check)
+    need_refresh = await api.get_channels_need_refresh(channels_to_scrape)
+    if need_refresh:
+        await message_manager.send_system(
+            chat_id,
+            texts.get("fetching_posts"),
+            tag="menu",
+        )
+        scrape_tasks = [
+            user_bot.scrape_channel(ch, limit=settings.training_recent_posts_per_channel)
+            for ch in need_refresh
+        ]
+        await asyncio.gather(*scrape_tasks, return_exceptions=True)
 
     await state.update_data(
         user_id=user_id,
@@ -105,16 +107,18 @@ async def start_bonus_training(
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
 
-    await message_manager.send_system(
-        chat_id,
-        texts.get("fetching_posts"),
-        tag="menu",
-    )
-
-    try:
-        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
-    except Exception:
-        pass
+    # Only scrape if channel needs refresh (TTL check)
+    need_refresh = await api.get_channels_need_refresh([username])
+    if need_refresh:
+        await message_manager.send_system(
+            chat_id,
+            texts.get("fetching_posts"),
+            tag="menu",
+        )
+        try:
+            await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
+        except Exception:
+            pass
 
     await state.update_data(
         bonus_channel_username=username,
@@ -251,15 +255,14 @@ async def on_confirm_retrain(
 
     # Build initial queue with interleaving
     from itertools import zip_longest
-    posts_by_channel = {}
+    def _norm_channel(name: str) -> str:
+        return (name or "unknown").strip().lstrip("@").lower()
+    posts_by_channel: dict[str, list] = {}
     for idx, post in enumerate(posts):
-        ch_name = post.get("channel_username", "unknown")
-        if ch_name not in posts_by_channel:
-            posts_by_channel[ch_name] = []
-        posts_by_channel[ch_name].append(idx)
-    
-    # Interleave indices
-    channel_lists = list(posts_by_channel.values())
+        ch_name = _norm_channel(post.get("channel_username", ""))
+        posts_by_channel.setdefault(ch_name, []).append(idx)
+    sorted_channel_names = sorted(posts_by_channel.keys())
+    channel_lists = [posts_by_channel[name] for name in sorted_channel_names]
     interleaved_indices = []
     for items in zip_longest(*channel_lists):
         for item in items:

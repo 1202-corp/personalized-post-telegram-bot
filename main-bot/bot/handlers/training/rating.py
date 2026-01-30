@@ -8,7 +8,8 @@ from aiogram.fsm.context import FSMContext
 
 from bot.core import MessageManager
 from bot.services import get_core_api
-from .helpers import _get_user_lang, show_training_post, finish_training_flow
+from .helpers import _get_user_lang, show_training_post
+from .flow import finish_training_flow
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -96,9 +97,11 @@ async def on_rate_post(
     if action == "like":
         likes_count += 1
         interactions_buffer.append({"post_id": post_id, "interaction_type": "like"})
+        await api.create_interaction(user_id, post_id, "like")
     elif action == "dislike":
         dislikes_count += 1
         interactions_buffer.append({"post_id": post_id, "interaction_type": "dislike"})
+        await api.create_interaction(user_id, post_id, "dislike")
         if extra_from_dislike_used < settings.training_max_extra_from_dislike:
             # Добавляем случайный новый пост из пула, который ещё не показан и не в очереди
             available_indices = [i for i in range(len(training_posts)) if i not in queue and i not in shown_indices]
@@ -151,7 +154,9 @@ async def on_rate_post(
         current_post_message_id=None,
     )
     
-    await show_training_post(callback.message.chat.id, message_manager, state)
+    showed = await show_training_post(callback.message.chat.id, message_manager, state)
+    if not showed:
+        await finish_training_flow(callback.message.chat.id, message_manager, state)
 
 
 @router.callback_query(F.data == "finish_training")
