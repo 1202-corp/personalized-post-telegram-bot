@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
 from aiogram.types import InputMediaPhoto, BufferedInputFile, LinkPreviewOptions
 
-from bot.core import MessageManager, get_texts, get_feed_keyboard, get_feed_post_keyboard
+from bot.core import MessageManager, get_texts, get_feed_keyboard, get_feed_post_keyboard, get_post_open_in_channel_keyboard
 from bot.services import get_core_api, get_user_bot, get_post_cache
 
 from .helpers import _get_user_lang, show_training_post
@@ -85,6 +85,22 @@ async def finish_training_flow(
     user_id = data.get("user_id")
 
     if user_id:
+        # Add training channels to user's list only on successful completion (not when aborted)
+        channel_usernames = data.get("training_channel_usernames") or []
+        bonus_usernames = {
+            (x or "").strip().lstrip("@").lower()
+            for x in (data.get("training_bonus_usernames") or [])
+        }
+        for ch in channel_usernames:
+            ch_clean = (ch or "").strip().lstrip("@").lower()
+            if ch_clean:
+                await api.channels.add_user_channel(
+                    user_id,
+                    ch_clean,
+                    is_for_training=ch_clean not in bonus_usernames,
+                    is_bonus=ch_clean in bonus_usernames,
+                )
+
         await api.mark_training_complete(user_id, skip_notify=True)
         exclude_post_ids = [p.get("id") for p in training_posts if p.get("id") is not None]
 
@@ -125,17 +141,12 @@ async def finish_training_flow(
 
     await state.clear()
 
-    name = "there"
-    if user_id:
-        user_data = await api.get_user(user_id)
-        if user_data and user_data.get("first_name"):
-            name = user_data["first_name"]
-    name = html.escape(name)
     channels = await api.get_user_channels_with_meta(user_id) if user_id else []
     mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
+    # Same menu as after /start, but without greeting ("👋 Привет, ...") — use feed_ready text
     await message_manager.send_system(
         chat_id,
-        texts.get("welcome_back", name=name),
+        texts.get("feed_ready"),
         reply_markup=get_feed_keyboard(lang, has_bonus_channel=user_has_bonus, mailing_any_on=mailing_any_on),
         tag="menu",
     )
@@ -185,6 +196,8 @@ async def send_initial_best_post(
     channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
     channel_username = (initial_best_post.get("channel_username") or "").lstrip("@")
     msg_id = initial_best_post.get("telegram_message_id")
+    post_url = f"https://t.me/{channel_username}/{msg_id}" if channel_username and msg_id is not None else None
+    post_open_kb = get_post_open_in_channel_keyboard(post_url, lang)
 
     full_text_raw = initial_best_post.get("text") or ""
     if not full_text_raw and channel_username and msg_id:
@@ -234,13 +247,16 @@ async def send_initial_best_post(
                         text=post_text,
                         parse_mode="HTML",
                         link_preview_options=LinkPreviewOptions(is_disabled=True),
+                        reply_markup=post_open_kb,
                     )
                     if initial_best_post.get("id"):
-                        await message_manager.send_temporary(
+                        await message_manager.send_regular(
                             chat_id,
                             question_text,
-                            reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                            reply_markup=get_feed_post_keyboard(initial_best_post.get("id"), lang),
                             tag="feed_post_buttons",
+                            add_main_menu=False,  # no main menu during training
+                            lang=lang,
                         )
                     sent_with_caption = True
             else:
@@ -257,13 +273,18 @@ async def send_initial_best_post(
                             tag="feed_post",
                             photo_bytes=photo_bytes,
                             photo_filename=f"{mid}.jpg",
+                            reply_markup=post_open_kb,
+                            add_main_menu=False,  # no main menu during training
+                            lang=lang,
                         )
                         if initial_best_post.get("id"):
-                            await message_manager.send_temporary(
+                            await message_manager.send_regular(
                                 chat_id,
                                 question_text,
-                                reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                                reply_markup=get_feed_post_keyboard(initial_best_post.get("id"), lang),
                                 tag="feed_post_buttons",
+                                add_main_menu=False,  # no main menu during training
+                                lang=lang,
                             )
                         sent_with_caption = True
                     else:
@@ -271,6 +292,7 @@ async def send_initial_best_post(
                         await message_manager.bot.send_photo(
                             chat_id=chat_id,
                             photo=input_file,
+                            reply_markup=post_open_kb,
                         )
 
     if initial_best_post.get("media_type") == "video" and not sent_with_caption:
@@ -289,16 +311,23 @@ async def send_initial_best_post(
                     post_text,
                     tag="feed_post",
                     photo=cached_file_id,
+                    reply_markup=post_open_kb,
+                    add_main_menu=False,  # no main menu during training
+                    lang=lang,
                 )
             else:
-                await message_manager.bot.send_photo(chat_id=chat_id, photo=cached_file_id)
+                await message_manager.bot.send_photo(
+                    chat_id=chat_id, photo=cached_file_id, reply_markup=post_open_kb
+                )
             sent_with_caption = True
             if initial_best_post.get("id"):
-                await message_manager.send_temporary(
+                await message_manager.send_regular(
                     chat_id,
                     question_text,
-                    reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                    reply_markup=get_feed_post_keyboard(initial_best_post.get("id"), lang),
                     tag="feed_post_buttons",
+                    add_main_menu=False,  # no main menu during training
+                    lang=lang,
                 )
         elif channel_username and msg_id:
             try:
@@ -313,16 +342,23 @@ async def send_initial_best_post(
                         tag="feed_post",
                         photo_bytes=photo_bytes,
                         photo_filename=f"{msg_id}.jpg",
+                        reply_markup=post_open_kb,
+                        add_main_menu=False,  # no main menu during training
+                        lang=lang,
                     )
                 else:
                     input_file = BufferedInputFile(photo_bytes, filename=f"{msg_id}.jpg")
-                    await message_manager.bot.send_photo(chat_id=chat_id, photo=input_file)
+                    await message_manager.bot.send_photo(
+                        chat_id=chat_id, photo=input_file, reply_markup=post_open_kb
+                    )
                 if initial_best_post.get("id"):
-                    await message_manager.send_temporary(
+                    await message_manager.send_regular(
                         chat_id,
                         question_text,
-                        reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                        reply_markup=get_feed_post_keyboard(initial_best_post.get("id"), lang),
                         tag="feed_post_buttons",
+                        add_main_menu=False,  # no main menu during training
+                        lang=lang,
                     )
                 sent_with_caption = True
 
@@ -332,11 +368,14 @@ async def send_initial_best_post(
             text=post_text,
             parse_mode=ParseMode.HTML,
             link_preview_options=LinkPreviewOptions(is_disabled=True),
+            reply_markup=post_open_kb,
         )
         if initial_best_post.get("id"):
-            await message_manager.send_temporary(
+            await message_manager.send_regular(
                 chat_id,
                 question_text,
-                reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
+                reply_markup=get_feed_post_keyboard(initial_best_post.get("id"), lang),
                 tag="feed_post_buttons",
+                add_main_menu=False,  # no main menu during training
+                lang=lang,
             )

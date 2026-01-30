@@ -43,17 +43,7 @@ async def start_full_retrain(
         if ch_clean:
             channels_set.add(ch_clean)
 
-    # Add default channels to user's channel list if not already added
-    # This ensures users keep their training channels even if defaults change in .env
-    for default_channel in default_channels:
-        channel_username = default_channel.strip().lstrip("@")
-        if channel_username:
-            # Try to add as training channel (will be ignored if already exists)
-            await api.channels.add_user_channel(
-                user_id,
-                channel_username,
-                is_bonus=False
-            )
+    # Do not add channels here — only on training completion (see finish_training_flow)
 
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
@@ -180,10 +170,13 @@ async def on_confirm_bonus_training(
     # Build initial queue (first N posts from pool, not all)
     initial_count = min(len(posts), settings.training_initial_posts_per_channel)
     initial_queue = list(range(initial_count))
-    
+    username_clean = username.strip().lstrip("@").lower()
+
     await state.update_data(
         user_id=user_id,
         training_posts=posts,
+        training_channel_usernames=[username_clean],  # Added to user list only on completion
+        training_bonus_usernames=[username_clean],  # This channel is bonus
         current_post_index=0,
         rated_count=0,
         training_queue=initial_queue,
@@ -221,17 +214,7 @@ async def on_confirm_retrain(
     default_channels = settings.default_training_channels.split(",")
     channels_to_scrape = [ch.strip() for ch in default_channels]
 
-    # Add default channels to user's channel list if not already added
-    # This ensures users keep their training channels even if defaults change in .env
-    for default_channel in default_channels:
-        channel_username = default_channel.strip().lstrip("@")
-        if channel_username:
-            # Try to add as training channel (will be ignored if already exists)
-            await api.channels.add_user_channel(
-                user_id,
-                channel_username,
-                is_bonus=False
-            )
+    # Do not add channels here — only on training completion (see finish_training_flow)
 
     user_channels = await api.get_user_channels(user_id)
     for ch in user_channels:
@@ -253,20 +236,58 @@ async def on_confirm_retrain(
         )
         return
 
-    # Очередь: N1 первого канала, затем N2 второго (API вернул в таком порядке). Прогресс — общий.
-    ch_names = set()
+    # Очередь: по initial_per_channel постов с КАЖДОГО канала (не первые N из всего пула).
+    def _channel_key(p):
+        return (p.get("channel_username") or "").strip().lstrip("@").lower() or "unknown"
+
+    channel_order = []
+    seen_ch = set()
     for p in posts:
-        ch = (p.get("channel_username") or "").strip().lstrip("@").lower()
-        if ch:
-            ch_names.add(ch)
-    num_channels = len(ch_names) or 1
+        ch = _channel_key(p)
+        if ch not in seen_ch:
+            seen_ch.add(ch)
+            channel_order.append(ch)
+
+    channel_to_indices = {}
+    for i, p in enumerate(posts):
+        ch = _channel_key(p)
+        if ch not in channel_to_indices:
+            channel_to_indices[ch] = []
+        channel_to_indices[ch].append(i)
+
     initial_per_channel = settings.training_initial_posts_per_channel
-    initial_queue_size = initial_per_channel * num_channels
-    initial_queue = list(range(min(initial_queue_size, len(posts))))
-    
+    initial_queue = []
+    per_channel_taken = {}
+    for ch in channel_order:
+        indices = channel_to_indices.get(ch, [])
+        take = min(initial_per_channel, len(indices))
+        initial_queue.extend(indices[:take])
+        per_channel_taken[ch] = take
+
+    num_channels = len(channel_order) or 1
+    expected_initial_count = initial_per_channel * num_channels
+    pool_post_ids = [p.get("id") for p in posts]
+    initial_queue_post_ids = [posts[i].get("id") for i in initial_queue]
+
+    logger.info("[TRAINING] (retrain) pool: total=%s, post_ids=%s", len(posts), pool_post_ids)
+    logger.info(
+        "[TRAINING] (retrain) initial queue (up to %s per channel): indices=%s, post_ids=%s, per_channel=%s",
+        initial_per_channel,
+        initial_queue,
+        initial_queue_post_ids,
+        per_channel_taken,
+    )
+    logger.info(
+        "[TRAINING] (retrain) initial count: expected=%s, actual=%s, channels=%s",
+        expected_initial_count,
+        len(initial_queue),
+        num_channels,
+    )
+
     await state.update_data(
         user_id=user_id,
         training_posts=posts,
+        training_channel_usernames=channel_order,  # Added to user list only on completion
         current_post_index=0,
         rated_count=0,
         training_queue=initial_queue,

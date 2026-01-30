@@ -172,18 +172,11 @@ async def on_confirm_training(
     default_channels = settings.default_training_channels.split(",")
     channels_set = set()
     
-    # Add default channels
+    # Add default channels (do not add to user list here — only on training completion)
     for ch in default_channels:
         ch_clean = ch.strip().lstrip("@").lower()
         if ch_clean:
             channels_set.add(ch_clean)
-            # Add to user's channel list if not already added
-            await api.channels.add_user_channel(
-                user_id,
-                ch_clean,
-                is_for_training=True,
-                is_bonus=False
-            )
     
     # Add user's own channels
     user_channels = await api.get_user_channels(user_id)
@@ -219,23 +212,71 @@ async def on_confirm_training(
         )
         return
     
-    # Очередь: N1 постов первого канала, затем N2 второго (API уже вернул в таком порядке). Прогресс — общий.
+    # Очередь: по initial_per_channel постов с КАЖДОГО канала (не первые N из всего пула).
+    # API вернул посты в порядке: [все по каналу 1], [все по каналу 2], ... — группируем индексы по каналу.
     training_posts = list(posts)
     initial_per_channel = settings.training_initial_posts_per_channel
-    ch_names = set()
+
+    def _channel_key(p):
+        return (p.get("channel_username") or "").strip().lstrip("@").lower() or "unknown"
+
+    # Порядок каналов: как впервые встречаются в training_posts
+    channel_order = []
+    seen_ch = set()
     for p in training_posts:
-        ch = (p.get("channel_username") or "").strip().lstrip("@").lower()
-        if ch:
-            ch_names.add(ch)
-    num_channels = len(ch_names) or 1
-    initial_queue_size = initial_per_channel * num_channels
-    initial_queue = list(range(min(initial_queue_size, len(training_posts))))
-    
-    logger.info(f"Training setup: pool={len(training_posts)}, initial_queue={len(initial_queue)}, reserve={len(training_posts) - len(initial_queue)}, channels={num_channels}")
+        ch = _channel_key(p)
+        if ch not in seen_ch:
+            seen_ch.add(ch)
+            channel_order.append(ch)
+
+    # Индексы по каналам (в том же порядке, что и посты)
+    channel_to_indices = {}
+    for i, p in enumerate(training_posts):
+        ch = _channel_key(p)
+        if ch not in channel_to_indices:
+            channel_to_indices[ch] = []
+        channel_to_indices[ch].append(i)
+
+    # Берём до initial_per_channel постов с каждого канала по очереди
+    initial_queue = []
+    per_channel_taken = {}
+    for ch in channel_order:
+        indices = channel_to_indices.get(ch, [])
+        take = min(initial_per_channel, len(indices))
+        initial_queue.extend(indices[:take])
+        per_channel_taken[ch] = take
+
+    num_channels = len(channel_order) or 1
+    expected_initial_count = initial_per_channel * num_channels
+    actual_initial_count = len(initial_queue)
+    pool_post_ids = [p.get("id") for p in training_posts]
+    initial_queue_post_ids = [training_posts[i].get("id") for i in initial_queue]
+
+    logger.info(
+        "[TRAINING] pool: total=%s, post_ids=%s",
+        len(training_posts),
+        pool_post_ids,
+    )
+    logger.info(
+        "[TRAINING] initial queue (up to %s per channel): indices=%s, post_ids=%s, per_channel=%s",
+        initial_per_channel,
+        initial_queue,
+        initial_queue_post_ids,
+        per_channel_taken,
+    )
+    logger.info(
+        "[TRAINING] initial count: expected (initial_per_channel*num_channels)=%s*%s=%s, actual=%s, channels=%s",
+        initial_per_channel,
+        num_channels,
+        expected_initial_count,
+        actual_initial_count,
+        num_channels,
+    )
     
     await state.update_data(
         user_id=user_id,
         training_posts=training_posts,
+        training_channel_usernames=channel_order,  # Added to user list only on completion
         current_post_index=0,
         rated_count=0,
         training_queue=initial_queue,

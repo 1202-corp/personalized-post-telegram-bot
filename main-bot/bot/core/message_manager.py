@@ -14,6 +14,7 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
 from bot.core.message_registry import MessageRegistry, MessageType, ManagedMessage
+from bot.core.keyboards import append_main_menu_row
 
 logger = logging.getLogger(__name__)
 
@@ -215,14 +216,42 @@ class MessageManager:
         tag: Optional[str] = None,
         photo_bytes: Optional[bytes] = None,
         photo_filename: str = "photo.jpg",
+        lang: Optional[str] = None,
+        add_main_menu: bool = False,
     ) -> Optional[Message]:
         """
         Send a REGULAR message (posts, kept forever).
         These messages are tracked but never auto-deleted.
         Deletes all temporary messages before sending.
+        When add_main_menu=True, the "Main menu" button is appended only to this (last) REGULAR message;
+        the previous last REGULAR message is edited to remove that button.
         """
         # Delete all temporary messages before sending regular (including user messages)
         await self._delete_all_temporary(chat_id)
+
+        base_reply_markup_for_next = None
+        if add_main_menu and lang:
+            # Remove "Main menu" from the previous last REGULAR message
+            latest = await self.registry.get_latest(chat_id, MessageType.REGULAR)
+            if latest:
+                prev_markup = (
+                    latest.base_reply_markup
+                    if latest.base_reply_markup is not None
+                    else InlineKeyboardMarkup(inline_keyboard=[])
+                )
+                try:
+                    await self.bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=latest.message_id,
+                        reply_markup=prev_markup,
+                    )
+                except (TelegramBadRequest, Exception) as e:
+                    logger.debug(
+                        "Could not edit previous REGULAR message reply_markup (chat_id=%s, msg_id=%s): %s",
+                        chat_id, latest.message_id, e,
+                    )
+            base_reply_markup_for_next = reply_markup  # store keyboard without main menu row
+            reply_markup = append_main_menu_row(reply_markup, lang)
         
         try:
             if photo_bytes:
@@ -255,7 +284,8 @@ class MessageManager:
                 message_id=message.message_id,
                 chat_id=chat_id,
                 message_type=MessageType.REGULAR,
-                tag=tag
+                tag=tag,
+                base_reply_markup=base_reply_markup_for_next,
             )
             await self.registry.register(managed)
             return message
@@ -348,15 +378,40 @@ class MessageManager:
             logger.error(f"Error deleting user message {message.message_id}: {e}")
             return False
     
+    async def ensure_main_menu_on_last_regular(self, chat_id: int, lang: str) -> bool:
+        """
+        After a REGULAR message was deleted: put the "Main menu" button on the new last REGULAR message
+        so it always exists on exactly one REGULAR message if any remain.
+        """
+        latest = await self.registry.get_latest(chat_id, MessageType.REGULAR)
+        if not latest:
+            return False
+        full_markup = append_main_menu_row(latest.base_reply_markup, lang)
+        try:
+            await self.bot.edit_message_reply_markup(
+                chat_id=chat_id,
+                message_id=latest.message_id,
+                reply_markup=full_markup,
+            )
+            return True
+        except (TelegramBadRequest, Exception) as e:
+            logger.debug(
+                "Could not add main menu to last REGULAR (chat_id=%s, msg_id=%s): %s",
+                chat_id, latest.message_id, e,
+            )
+            return False
+
     async def cleanup_chat(
         self,
         chat_id: int,
         include_system: bool = False,
-        include_regular: bool = False
+        include_regular: bool = False,
+        lang: Optional[str] = None,
     ) -> Dict[str, int]:
         """
         Clean up messages for a chat.
         By default, only deletes temporary messages.
+        When include_regular=True and any REGULAR were deleted, pass lang to move the "Main menu" button to the new last REGULAR.
         """
         result = {"temporary": 0, "system": 0, "regular": 0}
         
@@ -372,6 +427,8 @@ class MessageManager:
                 if await self._delete_message(chat_id, msg.message_id):
                     await self.registry.remove(chat_id, msg.message_id)
                     result["regular"] += 1
+            if result["regular"] > 0 and lang:
+                await self.ensure_main_menu_on_last_regular(chat_id, lang)
         
         return result
     

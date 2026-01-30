@@ -19,6 +19,38 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+@router.callback_query(F.data == "show_main_menu")
+async def on_show_main_menu(callback: CallbackQuery, message_manager: MessageManager):
+    """Open main (feed) menu — same as back_to_feed."""
+    await message_manager.send_toast(callback)
+    api = get_core_api()
+    user_id = callback.from_user.id
+    user_data = await api.get_user(user_id)
+    if user_data and user_data.get("user_role") not in ("member", "admin"):
+        feed_eligible = await api.get_feed_eligible(user_id)
+        if not (feed_eligible and feed_eligible.get("eligible")):
+            lang = await _get_user_lang(user_id)
+            texts = get_texts(lang)
+            await show_menu(
+                callback.message.chat.id,
+                texts.get("feed_complete_training_first", "Complete training first to unlock your feed and mailing."),
+                get_start_keyboard(lang),
+                message_manager,
+            )
+            return
+    has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
+    channels = await api.get_user_channels_with_meta(user_id)
+    mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
+    lang = await _get_user_lang(user_id)
+    texts = get_texts(lang)
+    await show_menu(
+        callback.message.chat.id,
+        texts.get("feed_ready"),
+        get_feed_keyboard(lang, has_bonus_channel=has_bonus, mailing_any_on=mailing_any_on),
+        message_manager,
+    )
+
+
 @router.callback_query(F.data == "back_to_feed")
 async def on_back_to_feed(callback: CallbackQuery, message_manager: MessageManager):
     await message_manager.send_toast(callback)

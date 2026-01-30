@@ -14,7 +14,7 @@ from aiogram import Bot
 import html
 from bot.services import get_core_api, get_user_bot, get_post_cache
 from bot.core.message_manager import MessageManager
-from bot.core import get_feed_post_keyboard, get_texts
+from bot.core import get_feed_post_keyboard, get_post_open_in_channel_keyboard, get_texts
 
 logger = logging.getLogger(__name__)
 
@@ -130,29 +130,51 @@ class RealtimeFeedService:
         except Exception as e:
             logger.error(f"Error sending real-time post to user {user_id}: {e}")
     
+    def _post_url_from_post(self, post: dict) -> Optional[str]:
+        """Build link to original post in channel (same as in post text header)."""
+        channel_username = (post.get("channel_username") or "").lstrip("@")
+        msg_id = post.get("telegram_message_id")
+        media_file_id = post.get("media_file_id")
+        if media_file_id and "," in str(media_file_id):
+            first_msg_id = (media_file_id.split(",")[0] or "").strip()
+        else:
+            first_msg_id = str(msg_id) if msg_id is not None else None
+        if channel_username and first_msg_id:
+            return f"https://t.me/{channel_username}/{first_msg_id}"
+        return None
+
     async def _send_text_post(self, user_id: int, text: str, post: dict, lang: str):
         """Send a text-only post with buttons as separate message."""
         # Send post without buttons
-        await self.message_manager.send_regular(
+        post_url = self._post_url_from_post(post)
+        post_open_kb = get_post_open_in_channel_keyboard(post_url, lang)
+        post_msg = await self.message_manager.send_regular(
             chat_id=user_id,
             text=text,
-            tag="realtime_post"
+            reply_markup=post_open_kb,
+            tag="realtime_post",
+            add_main_menu=True,
+            lang=lang,
         )
-        # Send buttons as separate message
+        post_message_id = post_msg.message_id if post_msg else None
         question_text = get_texts(lang).get("feed_post_question", "👆 Как вам данный пост?")
         await self.message_manager.send_regular(
             chat_id=user_id,
             text=question_text,
-            reply_markup=get_feed_post_keyboard(post.get("id"), lang),
-            tag="realtime_post_buttons"
+            reply_markup=get_feed_post_keyboard(post.get("id"), lang, post_message_id=post_message_id),
+            tag="realtime_post_buttons",
+            add_main_menu=True,
+            lang=lang,
         )
     
     async def _send_photo_post(
         self, user_id: int, text: str, post: dict, lang: str,
         channel_username: str, msg_id: int, *, use_video: bool = False
     ):
-        """Send a post with a single photo (or video as thumbnail+play JPEG), buttons as separate message."""
+        """Send a post with a single photo (or video as thumbnail+play JPEG). 'Open in channel' on post message."""
         try:
+            post_url = f"https://t.me/{channel_username}/{msg_id}" if channel_username and msg_id else None
+            post_open_kb = get_post_open_in_channel_keyboard(post_url, lang)
             post_id = post.get("id")
             cached_file_id = None
             if post_id:
@@ -165,7 +187,10 @@ class RealtimeFeedService:
                     chat_id=user_id,
                     text=text[:1024],
                     photo=cached_file_id,
-                    tag="realtime_post"
+                    reply_markup=post_open_kb,
+                    tag="realtime_post",
+                    add_main_menu=True,
+                    lang=lang,
                 )
             else:
                 user_bot = get_user_bot()
@@ -180,7 +205,10 @@ class RealtimeFeedService:
                         text=text[:1024],
                         photo_bytes=photo_bytes,
                         photo_filename=f"{msg_id}.jpg",
-                        tag="realtime_post"
+                        reply_markup=post_open_kb,
+                        tag="realtime_post",
+                        add_main_menu=True,
+                        lang=lang,
                     )
                     if post_id and msg and msg.photo:
                         cache = get_post_cache()
@@ -188,12 +216,15 @@ class RealtimeFeedService:
                 else:
                     msg = None
             if msg:
+                post_message_id = msg.message_id
                 question_text = get_texts(lang).get("feed_post_question", "👆 Как вам данный пост?")
                 await self.message_manager.send_regular(
                     chat_id=user_id,
                     text=question_text,
-                    reply_markup=get_feed_post_keyboard(post.get("id"), lang),
-                    tag="realtime_post_buttons"
+                    reply_markup=get_feed_post_keyboard(post.get("id"), lang, post_message_id=post_message_id),
+                    tag="realtime_post_buttons",
+                    add_main_menu=True,
+                    lang=lang,
                 )
             else:
                 await self._send_text_post(user_id, text, post, lang)
