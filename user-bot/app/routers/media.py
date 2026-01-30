@@ -45,16 +45,15 @@ async def get_photo(channel_username: str, message_id: int):
 @router.get("/video")
 async def get_video(channel_username: str, message_id: int):
     """
-    Return video bytes for a given channel message.
-    
-    This endpoint is used by main-bot to display videos for posts.
+    Return video as photo (first frame + play button overlay) for a given channel message.
+    Main-bot never receives actual video; this returns JPEG for display.
     
     Args:
         channel_username: Channel username (with or without @)
         message_id: Telegram message ID
         
     Returns:
-        Video bytes as MP4 video
+        JPEG image (thumbnail with play overlay)
         
     Raises:
         HTTPException: 503 if Telethon not connected, 404 if video not found
@@ -70,7 +69,7 @@ async def get_video(channel_username: str, message_id: int):
     if not data:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    return Response(content=data, media_type="video/mp4")
+    return Response(content=data, media_type="image/jpeg")
 
 
 @router.get("/text")

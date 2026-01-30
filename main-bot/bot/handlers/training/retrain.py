@@ -253,27 +253,16 @@ async def on_confirm_retrain(
         )
         return
 
-    # Build initial queue with interleaving
-    from itertools import zip_longest
-    def _norm_channel(name: str) -> str:
-        return (name or "unknown").strip().lstrip("@").lower()
-    posts_by_channel: dict[str, list] = {}
-    for idx, post in enumerate(posts):
-        ch_name = _norm_channel(post.get("channel_username", ""))
-        posts_by_channel.setdefault(ch_name, []).append(idx)
-    sorted_channel_names = sorted(posts_by_channel.keys())
-    channel_lists = [posts_by_channel[name] for name in sorted_channel_names]
-    interleaved_indices = []
-    for items in zip_longest(*channel_lists):
-        for item in items:
-            if item is not None:
-                interleaved_indices.append(item)
-    
-    # Initial queue: first N posts per channel
+    # Очередь: N1 первого канала, затем N2 второго (API вернул в таком порядке). Прогресс — общий.
+    ch_names = set()
+    for p in posts:
+        ch = (p.get("channel_username") or "").strip().lstrip("@").lower()
+        if ch:
+            ch_names.add(ch)
+    num_channels = len(ch_names) or 1
     initial_per_channel = settings.training_initial_posts_per_channel
-    num_channels = len(posts_by_channel)
     initial_queue_size = initial_per_channel * num_channels
-    initial_queue = interleaved_indices[:min(initial_queue_size, len(interleaved_indices))]
+    initial_queue = list(range(min(initial_queue_size, len(posts))))
     
     await state.update_data(
         user_id=user_id,

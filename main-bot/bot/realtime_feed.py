@@ -12,9 +12,9 @@ from typing import Optional, Set
 from aiogram import Bot
 
 import html
-from bot.services import get_core_api, get_user_bot
+from bot.services import get_core_api, get_user_bot, get_post_cache
 from bot.core.message_manager import MessageManager
-from bot.core import get_feed_post_keyboard
+from bot.core import get_feed_post_keyboard, get_texts
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,10 @@ class RealtimeFeedService:
             if media_type == "media_group" and media_file_id:
                 await self._send_media_group_post(user_id, full_text, post, lang, channel_username, media_file_id)
             elif media_type == "photo":
-                await self._send_photo_post(user_id, full_text, post, lang, channel_username, msg_id)
+                await self._send_photo_post(user_id, full_text, post, lang, channel_username, msg_id, use_video=False)
+            elif media_type == "video":
+                # Video is never sent as video: first frame + play overlay as photo (JPEG)
+                await self._send_photo_post(user_id, full_text, post, lang, channel_username, msg_id, use_video=True)
             else:
                 await self._send_text_post(user_id, full_text, post, lang)
             
@@ -136,40 +139,63 @@ class RealtimeFeedService:
             tag="realtime_post"
         )
         # Send buttons as separate message
+        question_text = get_texts(lang).get("feed_post_question", "👆 Как вам данный пост?")
         await self.message_manager.send_regular(
             chat_id=user_id,
-            text="👆",
+            text=question_text,
             reply_markup=get_feed_post_keyboard(post.get("id"), lang),
             tag="realtime_post_buttons"
         )
     
     async def _send_photo_post(
         self, user_id: int, text: str, post: dict, lang: str,
-        channel_username: str, msg_id: int
+        channel_username: str, msg_id: int, *, use_video: bool = False
     ):
-        """Send a post with a single photo, buttons as separate message."""
+        """Send a post with a single photo (or video as thumbnail+play JPEG), buttons as separate message."""
         try:
-            user_bot = get_user_bot()
-            photo_bytes = await user_bot.get_photo(channel_username, msg_id)
-            
-            if photo_bytes:
-                # Send photo without buttons
-                await self.message_manager.send_regular(
+            post_id = post.get("id")
+            cached_file_id = None
+            if post_id:
+                cache = get_post_cache()
+                content = await cache.get_post_content(post_id)
+                if content:
+                    cached_file_id = content.get("telegram_file_id")
+            if cached_file_id:
+                msg = await self.message_manager.send_regular(
                     chat_id=user_id,
-                    text=text[:1024],  # Caption limit
-                    photo_bytes=photo_bytes,
-                    photo_filename=f"{msg_id}.jpg",
+                    text=text[:1024],
+                    photo=cached_file_id,
                     tag="realtime_post"
                 )
-                # Send buttons as separate message
+            else:
+                user_bot = get_user_bot()
+                if use_video:
+                    # get_video returns JPEG (first frame + play overlay)
+                    photo_bytes = await user_bot.get_video(channel_username, msg_id)
+                else:
+                    photo_bytes = await user_bot.get_photo(channel_username, msg_id)
+                if photo_bytes:
+                    msg = await self.message_manager.send_regular(
+                        chat_id=user_id,
+                        text=text[:1024],
+                        photo_bytes=photo_bytes,
+                        photo_filename=f"{msg_id}.jpg",
+                        tag="realtime_post"
+                    )
+                    if post_id and msg and msg.photo:
+                        cache = get_post_cache()
+                        await cache.set_post_content(post_id, telegram_file_id=msg.photo[-1].file_id)
+                else:
+                    msg = None
+            if msg:
+                question_text = get_texts(lang).get("feed_post_question", "👆 Как вам данный пост?")
                 await self.message_manager.send_regular(
                     chat_id=user_id,
-                    text="👆",
+                    text=question_text,
                     reply_markup=get_feed_post_keyboard(post.get("id"), lang),
                     tag="realtime_post_buttons"
                 )
             else:
-                # Fallback to text if photo unavailable
                 await self._send_text_post(user_id, text, post, lang)
         except Exception as e:
             logger.warning(f"Failed to send photo, falling back to text: {e}")

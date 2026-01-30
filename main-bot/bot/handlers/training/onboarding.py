@@ -219,30 +219,15 @@ async def on_confirm_training(
         )
         return
     
-    # Interleave posts from different channels: нормализуем имя канала и фиксированный порядок (сортируем по имени)
-    from itertools import zip_longest
-    def _norm_channel(name: str) -> str:
-        return (name or "unknown").strip().lstrip("@").lower()
-    posts_by_channel: dict[str, list] = {}
-    for post in posts:
-        ch_name = _norm_channel(post.get("channel_username", ""))
-        posts_by_channel.setdefault(ch_name, []).append(post)
-    # Детерминированный порядок каналов — по имени, чтобы источник всегда соответствовал посту
-    sorted_channel_names = sorted(posts_by_channel.keys())
-    channel_lists = [posts_by_channel[name] for name in sorted_channel_names]
-    interleaved_posts = []
-    for items in zip_longest(*channel_lists):
-        for item in items:
-            if item is not None:
-                interleaved_posts.append(item)
-    
-    # Use interleaved posts as training set (full pool)
-    training_posts = interleaved_posts
-    
-    # Initial queue: only first N posts per channel (interleaved)
-    # Reserve posts remain in pool for dislikes/skips
+    # Очередь: N1 постов первого канала, затем N2 второго (API уже вернул в таком порядке). Прогресс — общий.
+    training_posts = list(posts)
     initial_per_channel = settings.training_initial_posts_per_channel
-    num_channels = len(posts_by_channel)
+    ch_names = set()
+    for p in training_posts:
+        ch = (p.get("channel_username") or "").strip().lstrip("@").lower()
+        if ch:
+            ch_names.add(ch)
+    num_channels = len(ch_names) or 1
     initial_queue_size = initial_per_channel * num_channels
     initial_queue = list(range(min(initial_queue_size, len(training_posts))))
     

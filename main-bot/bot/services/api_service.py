@@ -65,9 +65,16 @@ class CoreAPIClient:
 
     async def get_feed_eligible(self, *args, **kwargs):
         return await self.users.get_feed_eligible(*args, **kwargs)
+
+    async def mark_training_complete(self, telegram_id: int, *, skip_notify: bool = False):
+        return await self.users.mark_training_complete(telegram_id, skip_notify=skip_notify)
     
     async def get_default_channels(self, *args, **kwargs):
         return await self.channels.get_default_channels(*args, **kwargs)
+    
+    async def get_channels_need_refresh(self, channel_usernames: list) -> list:
+        """Return channel usernames that need scraping (TTL check)."""
+        return await self.channels.get_channels_need_refresh(channel_usernames)
     
     async def add_user_channel(self, *args, **kwargs):
         return await self.channels.add_user_channel(*args, **kwargs)
@@ -234,7 +241,7 @@ class UserBotClient:
         return await self._get_media("photo", channel_username, message_id)
     
     async def get_video(self, channel_username: str, message_id: int) -> Optional[bytes]:
-        """Fetch video bytes for a specific channel message from user-bot."""
+        """Fetch video as photo (JPEG: first frame + play overlay) from user-bot. Main-bot never receives actual video."""
         return await self._get_media("video", channel_username, message_id, timeout=30.0)
     
     async def get_post_text(self, channel_username: str, message_id: int) -> Optional[str]:
@@ -327,7 +334,7 @@ class PostCacheClient:
             post_id: Post ID
             
         Returns:
-            Dict with keys: text, media_type, media_data, cached_at
+            Dict with keys: text, media_type, media_data, telegram_file_id, cached_at
             or None if not found/expired
         """
         try:
@@ -344,8 +351,8 @@ class PostCacheClient:
             for key, value in data.items():
                 key_str = key.decode('utf-8') if isinstance(key, bytes) else key
                 if key_str == 'media_data' and value:
-                    # media_data is base64 encoded
-                    result[key_str] = base64.b64decode(value).decode('utf-8') if value else None
+                    # media_data is stored as base64 string; return as-is (do not decode to bytes then utf-8)
+                    result[key_str] = value.decode('utf-8') if isinstance(value, bytes) else value
                 elif key_str == 'cached_at':
                     result[key_str] = value.decode('utf-8') if isinstance(value, bytes) else value
                 else:
@@ -361,7 +368,8 @@ class PostCacheClient:
         post_id: int,
         text: Optional[str] = None,
         media_type: Optional[str] = None,
-        media_data: Optional[str] = None  # base64 encoded string
+        media_data: Optional[str] = None,  # base64 encoded string
+        telegram_file_id: Optional[str] = None,
     ) -> bool:
         """
         Cache post content (text and media) in Redis.
@@ -371,6 +379,7 @@ class PostCacheClient:
             text: HTML text content
             media_type: Type of media (photo, video, etc.)
             media_data: Media data as base64 encoded string
+            telegram_file_id: Telegram file_id after bot sent this media (avoids re-download)
             
         Returns:
             True if successful, False otherwise
@@ -380,26 +389,23 @@ class PostCacheClient:
             redis_client = await self._get_redis_client()
             cache_key = self._get_cache_key(post_id)
             
-            # Prepare hash data
-            cache_data = {
-                'cached_at': datetime.utcnow().isoformat().encode('utf-8'),
-            }
-            
+            cache_data: dict = {}
+            if text is not None or media_type is not None or media_data is not None:
+                cache_data['cached_at'] = datetime.utcnow().isoformat().encode('utf-8')
             if text is not None:
                 cache_data['text'] = text.encode('utf-8')
-            
             if media_type is not None:
                 cache_data['media_type'] = media_type.encode('utf-8')
-            
             if media_data is not None:
-                # media_data is already base64 encoded string
                 cache_data['media_data'] = media_data.encode('utf-8')
+            if telegram_file_id is not None:
+                cache_data['telegram_file_id'] = telegram_file_id.encode('utf-8')
             
-            # Store as hash with TTL
-            await redis_client.hset(cache_key, mapping=cache_data)
+            if cache_data:
+                await redis_client.hset(cache_key, mapping=cache_data)
             await redis_client.expire(cache_key, CACHE_TTL_SECONDS)
             
-            logger.debug(f"Cached post content (post_id={post_id}, has_text={text is not None}, has_media={media_data is not None})")
+            logger.debug(f"Cached post content (post_id={post_id}, has_text={text is not None}, has_media={media_data is not None}, has_file_id={telegram_file_id is not None})")
             return True
         except Exception as e:
             logger.error(f"Error caching post content (post_id={post_id}): {e}")

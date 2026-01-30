@@ -29,19 +29,21 @@ async def on_view_feed(
     user_id = callback.from_user.id
     chat_id = callback.message.chat.id
     await api.update_activity(user_id)
-    feed_eligible = await api.get_feed_eligible(user_id)
-    if not (feed_eligible and feed_eligible.get("eligible")):
-        lang = await _get_user_lang(user_id)
-        texts = get_texts(lang)
-        from bot.core.keyboards import get_start_keyboard
-        await message_manager.send_system(
-            chat_id,
-            texts.get("feed_complete_training_first", "Complete training first to unlock your feed and mailing."),
-            reply_markup=get_start_keyboard(lang),
-            tag="menu"
-        )
-        return
     user_data = await api.get_user(user_id)
+    # Только гостям показываем «сначала заверши тренировку»; member/admin всегда видят меню ленты
+    if user_data and user_data.get("user_role") not in ("member", "admin"):
+        feed_eligible = await api.get_feed_eligible(user_id)
+        if not (feed_eligible and feed_eligible.get("eligible")):
+            lang = await _get_user_lang(user_id)
+            texts = get_texts(lang)
+            from bot.core.keyboards import get_start_keyboard
+            await message_manager.send_system(
+                chat_id,
+                texts.get("feed_complete_training_first", "Complete training first to unlock your feed and mailing."),
+                reply_markup=get_start_keyboard(lang),
+                tag="menu"
+            )
+            return
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     has_bonus = user_data.get("bonus_channels_count", 0) >= 1 if user_data else False
@@ -91,25 +93,23 @@ async def on_feed_interaction(
     # Only create interaction for like/dislike, not skip
     if action != "skip":
         await api.create_interaction(user_id, post_id, action)
-        await api.create_log(user_id, f"feed_post_{action}", f"post_id={post_id}")
     
-    # Delete the 👆 message with buttons
+    # Delete the question message with buttons
     try:
         await message_manager.bot.delete_message(chat_id, callback.message.message_id)
     except Exception:
         pass
-    
-    # Set reaction on the post (message before this one)
-    # The post message_id is one less than the buttons message_id
+
+    # Set reaction on the post (message before the question message)
     post_message_id = callback.message.message_id - 1
-    if action != "skip":
+    reaction_emoji = "👍" if action == "like" else "👎" if action == "dislike" else "⏭️" if action == "skip" else None
+    if reaction_emoji:
         try:
             from aiogram.types import ReactionTypeEmoji
-            reaction = ReactionTypeEmoji(emoji="👍" if action == "like" else "👎")
             await message_manager.bot.set_message_reaction(
                 chat_id=chat_id,
                 message_id=post_message_id,
-                reaction=[reaction]
+                reaction=[ReactionTypeEmoji(emoji=reaction_emoji)]
             )
         except Exception as e:
             logger.debug(f"Could not set reaction: {e}")

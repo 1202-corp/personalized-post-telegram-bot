@@ -11,7 +11,7 @@ from typing import Optional, Dict, List
 from aiogram import Bot
 from aiogram.types import Message, InlineKeyboardMarkup, BufferedInputFile, LinkPreviewOptions, CallbackQuery
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
 from bot.core.message_registry import MessageRegistry, MessageType, ManagedMessage
 
@@ -112,6 +112,12 @@ class MessageManager:
                             parse_mode=ParseMode.HTML
                         )
                         return None  # Edited in place
+                except TelegramRetryAfter as e:
+                    logger.warning(
+                        "Flood control (send_system edit) in chat %s: retry after %s seconds.",
+                        chat_id, getattr(e, "retry_after", "?")
+                    )
+                    return None  # Don't crash; menu may stay stale until user retries
                 except TelegramBadRequest as e:
                     if "message is not modified" in str(e).lower():
                         return None  # Same content, no change needed
@@ -190,6 +196,12 @@ class MessageManager:
                 )
             
             return message
+        except TelegramRetryAfter as e:
+            logger.warning(
+                "Flood control (send_temporary) in chat %s: retry after %s seconds.",
+                chat_id, getattr(e, "retry_after", "?")
+            )
+            return None
         except Exception as e:
             logger.error(f"Failed to send temporary message: {e}")
             return None
@@ -247,6 +259,12 @@ class MessageManager:
             )
             await self.registry.register(managed)
             return message
+        except TelegramRetryAfter as e:
+            logger.warning(
+                "Flood control (send_regular) in chat %s: retry after %s seconds.",
+                chat_id, getattr(e, "retry_after", "?")
+            )
+            return None
         except Exception as e:
             logger.error(f"Failed to send regular message: {e}")
             return None
@@ -410,6 +428,12 @@ class MessageManager:
                 parse_mode=ParseMode.HTML
             )
             return True
+        except TelegramRetryAfter as e:
+            logger.warning(
+                "Flood control (EditMessageText) in chat %s: retry after %s seconds. Returning False so caller can fallback.",
+                chat_id, getattr(e, "retry_after", "?")
+            )
+            return False
         except TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 return True  # Same content, considered success
@@ -439,6 +463,12 @@ class MessageManager:
                 reply_markup=reply_markup
             )
             return True
+        except TelegramRetryAfter as e:
+            logger.warning(
+                "Flood control (EditMessageReplyMarkup) in chat %s: retry after %s seconds.",
+                chat_id, getattr(e, "retry_after", "?")
+            )
+            return False
         except TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 return True
@@ -550,6 +580,12 @@ class MessageManager:
             )
             await self.registry.register(managed)
             return message
+        except TelegramRetryAfter as e:
+            logger.warning(
+                "Flood control (SendPhoto/SendMessage) in chat %s: retry after %s seconds.",
+                chat_id, getattr(e, "retry_after", "?")
+            )
+            return None
         except Exception as e:
             logger.error(f"Failed to send new system message: {e}")
             return None
@@ -559,6 +595,12 @@ class MessageManager:
         try:
             await self.bot.delete_message(chat_id=chat_id, message_id=message_id)
             return True
+        except TelegramRetryAfter as e:
+            logger.warning(
+                "Flood control (DeleteMessage) in chat %s: retry after %s seconds.",
+                chat_id, getattr(e, "retry_after", "?")
+            )
+            return False
         except TelegramBadRequest as e:
             if "message to delete not found" in str(e).lower():
                 return True  # Already deleted

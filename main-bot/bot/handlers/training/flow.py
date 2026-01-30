@@ -178,6 +178,9 @@ async def send_initial_best_post(
         return
 
     initial_best_post = all_posts[0]
+    lang = await _get_user_lang(user_id)
+    texts = get_texts(lang)
+    question_text = texts.get("feed_post_question", "👆 Как вам данный пост?")
 
     channel_title = html.escape(initial_best_post.get("channel_title", "Unknown"))
     channel_username = (initial_best_post.get("channel_username") or "").lstrip("@")
@@ -235,7 +238,7 @@ async def send_initial_best_post(
                     if initial_best_post.get("id"):
                         await message_manager.send_temporary(
                             chat_id,
-                            "👆",
+                            question_text,
                             reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                             tag="feed_post_buttons",
                         )
@@ -258,7 +261,7 @@ async def send_initial_best_post(
                         if initial_best_post.get("id"):
                             await message_manager.send_temporary(
                                 chat_id,
-                                "👆",
+                                question_text,
                                 reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                                 tag="feed_post_buttons",
                             )
@@ -293,7 +296,7 @@ async def send_initial_best_post(
             if initial_best_post.get("id"):
                 await message_manager.send_temporary(
                     chat_id,
-                    "👆",
+                    question_text,
                     reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                     tag="feed_post_buttons",
                 )
@@ -317,7 +320,7 @@ async def send_initial_best_post(
                 if initial_best_post.get("id"):
                     await message_manager.send_temporary(
                         chat_id,
-                        "👆",
+                        question_text,
                         reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                         tag="feed_post_buttons",
                     )
@@ -333,7 +336,7 @@ async def send_initial_best_post(
         if initial_best_post.get("id"):
             await message_manager.send_temporary(
                 chat_id,
-                "👆",
+                question_text,
                 reply_markup=get_feed_post_keyboard(initial_best_post.get("id")),
                 tag="feed_post_buttons",
             )

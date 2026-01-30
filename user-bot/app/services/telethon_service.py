@@ -182,11 +182,12 @@ class TelethonService:
         limit: int = 7
     ) -> ScrapeResult:
         """
-        Scrape recent messages from a channel.
+        Scrape recent messages from a channel until we have `limit` posts with caption
+        or no more messages in the channel.
         
         Args:
             username: Channel username (with or without @)
-            limit: Maximum number of posts to return
+            limit: Maximum number of posts with caption to return
             
         Returns:
             ScrapeResult dictionary with posts
@@ -196,21 +197,35 @@ class TelethonService:
         username = username.lstrip("@")
         
         try:
-            # Get channel entity
             entity = await self._get_channel_entity(username)
             if not entity:
                 return self._create_error_result(username, "Entity is not a channel")
             
-            # Fetch messages: exactly `limit` (e.g. TRAINING_RECENT_POSTS_PER_CHANNEL=50 from .env)
-            messages: List[Message] = await self._client.get_messages(
-                entity,
-                limit=limit
-            )
+            batch_size = 100
+            all_posts: List[PostDataDict] = []
+            max_id: Optional[int] = None
             
-            # Process messages
-            posts = await self._process_messages(messages, entity, username)
+            while len(all_posts) < limit:
+                get_kwargs: dict = {"limit": batch_size}
+                if max_id is not None:
+                    get_kwargs["max_id"] = max_id
+                messages: List[Message] = await self._client.get_messages(entity, **get_kwargs)
+                if not messages:
+                    break
+                batch_posts = await self._process_messages(messages, entity, username)
+                all_posts.extend(batch_posts)
+                if len(all_posts) >= limit:
+                    break
+                ids = [m.id for m in messages if m.id is not None]
+                if not ids:
+                    break
+                min_id = min(ids)
+                max_id = min_id - 1
+                if len(messages) < batch_size:
+                    break
             
-            logger.info(f"Scraped {len(posts)} posts from @{username}")
+            posts = all_posts[:limit]
+            logger.info(f"Scraped {len(posts)} posts from @{username} (with caption)")
             
             return {
                 "success": True,
@@ -289,9 +304,12 @@ class TelethonService:
         posts: List[PostDataDict] = []
         
         for msg in messages:
+            if msg.id is None:
+                continue  # skip messages without id (e.g. service messages)
             raw_text = (msg.message or "").strip()
+            # Only messages with text (caption) are valid for training: we need text for embeddings
             if not raw_text:
-                continue  # skip pure-media posts without caption
+                continue  # skip media-only messages (photo/video without caption)
             
             # Get message text
             text = get_message_html(msg)
@@ -326,15 +344,15 @@ class TelethonService:
                 if (m.message or "").strip():
                     main = m
                     break
-            if main is None:
-                # Album has no caption text, skip
+            if main is None or main.id is None:
+                # Album has no caption text or no message id, skip
                 continue
             
             # Get message text
             text = get_message_html(main)
-            # Collect all message IDs in the album for later media group sending
-            all_ids = sorted({m.id for m in group_messages})
-            media_file_id = ",".join(str(mid) for mid in all_ids)
+            # Collect all message IDs in the album for later media group sending (skip None ids)
+            all_ids = sorted(m.id for m in group_messages if m.id is not None)
+            media_file_id = ",".join(str(mid) for mid in all_ids) if all_ids else str(main.id)
             
             posts.append({
                 "telegram_message_id": main.id,

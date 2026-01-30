@@ -91,19 +91,56 @@ class MediaService:
             logger.warning(f"Failed to compress image: {e}, returning original")
             return data
     
+    def _draw_play_overlay(self, image_bytes: bytes) -> bytes:
+        """
+        Draw a play button (triangle) in the center with gray semi-transparent background.
+        Main-bot never receives video; user-bot sends video as this photo.
+        
+        Args:
+            image_bytes: Original image bytes (e.g. video thumbnail)
+            
+        Returns:
+            JPEG bytes with play overlay
+        """
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            w, h = img.size
+            # Gray semi-transparent overlay in center (circle or rounded rect)
+            overlay_size = min(w, h) // 4
+            cx, cy = w // 2, h // 2
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(img, 'RGBA')
+            # Circle background for play button (gray, semi-transparent)
+            r = overlay_size // 2
+            draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(128, 128, 128, 180))
+            # Play triangle (white, pointing right)
+            tri_size = r // 2
+            points = [
+                (cx - tri_size, cy - tri_size),
+                (cx - tri_size, cy + tri_size),
+                (cx + tri_size, cy),
+            ]
+            draw.polygon(points, fill=(255, 255, 255, 255))
+            output = io.BytesIO()
+            img.save(output, format='JPEG', quality=PHOTO_QUALITY, optimize=True)
+            return output.getvalue()
+        except Exception as e:
+            logger.warning(f"Failed to draw play overlay: {e}, returning original")
+            return image_bytes
+    
     async def download_video(self, username: str, message_id: int) -> Optional[bytes]:
         """
-        Download video thumbnail (first frame) for a specific channel message.
-        
-        Returns the video thumbnail as a compressed image instead of the full video
-        for faster loading in the miniapp.
+        Get video as photo: first frame (thumbnail) + play button in center.
+        Main-bot never receives video; this returns JPEG for display.
         
         Args:
             username: Channel username (with or without @)
             message_id: Telegram message ID
             
         Returns:
-            Thumbnail image bytes or None if not found/failed
+            JPEG bytes (thumbnail with play overlay) or None if not found/failed
         """
         await self.telethon_service.ensure_connected()
         
@@ -116,21 +153,19 @@ class MediaService:
             if not message or not message.video:
                 return None
             
-            # Download video thumbnail instead of full video
-            # Telethon can download just the thumbnail
-            if message.video.thumbs:
-                # Download the thumbnail directly
-                data: bytes = await self.telethon_service._download_media(
-                    message, bytes, thumb=-1  # -1 = largest thumbnail
-                )
-                if data:
-                    return self._compress_image(data)
+            if not message.video.thumbs:
+                logger.warning(f"No thumbnail for video @{username} (msg {message_id})")
+                return None
             
-            # Fallback: if no thumbnail, return None (don't download full video)
-            logger.warning(f"No thumbnail available for video @{username} (msg {message_id})")
-            return None
+            data: bytes = await self.telethon_service._download_media(
+                message, bytes, thumb=-1
+            )
+            if not data:
+                return None
+            compressed = self._compress_image(data)
+            return self._draw_play_overlay(compressed)
         except Exception as e:
-            logger.error(f"Error downloading video thumbnail from @{username} (msg {message_id}): {e}")
+            logger.error(f"Error getting video as photo from @{username} (msg {message_id}): {e}")
             return None
     
     async def get_post_text(self, username: str, message_id: int) -> Optional[str]:
@@ -212,10 +247,11 @@ class MediaService:
                 if photo_bytes:
                     media_data = base64.b64encode(photo_bytes).decode('utf-8')
             elif message.video:
-                media_type = "video"
-                video_bytes = await self.download_video(username, message_id)
-                if video_bytes:
-                    media_data = base64.b64encode(video_bytes).decode('utf-8')
+                # Return video as photo (first frame + play overlay); main-bot never receives video
+                media_type = "photo"
+                video_as_photo = await self.download_video(username, message_id)
+                if video_as_photo:
+                    media_data = base64.b64encode(video_as_photo).decode('utf-8')
             
             if media_type:
                 result["media_type"] = media_type

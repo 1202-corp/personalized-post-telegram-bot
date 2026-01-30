@@ -7,6 +7,7 @@ import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
 
 from bot.core import (
     MessageManager, get_texts,
@@ -30,7 +31,7 @@ from bot.utils import get_user_lang as _get_user_lang
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, message_manager: MessageManager):
+async def cmd_start(message: Message, message_manager: MessageManager, state: FSMContext):
     """Handle /start command - Entry point to AARRR funnel."""
     user = message.from_user
     api = get_core_api()
@@ -65,12 +66,20 @@ async def cmd_start(message: Message, message_manager: MessageManager):
     lang = await api.get_user_language(user.id)
     texts = get_texts(lang)
     
-    # Check user status and route accordingly
     status = user_data.get("status", "new")
     user_role = user_data.get("user_role", "guest")
     name = html.escape(user.first_name or "there")
     
-    # training_complete: проверяем по user_role (member или admin = прошел тренировку)
+    # Пользователь с статусом training нажал /start = сбросил тренировку → new (guest) или active (member/admin)
+    if status == "training":
+        await state.clear()
+        if user_role in ("member", "admin"):
+            await api.update_user(user.id, status="active")
+        else:
+            await api.update_user(user.id, status="new", user_role="guest")
+        status = "active" if user_role in ("member", "admin") else "new"
+        user_data = await api.get_user(user.id) or user_data
+    
     training_complete = user_role in ("member", "admin")
     
     if not training_complete:
@@ -85,19 +94,9 @@ async def cmd_start(message: Message, message_manager: MessageManager):
             is_start=True
         )
     else:
-        # Member или Admin: пользователь прошёл тренировку и пользуется сервисом
+        # Member/Admin: всегда показываем меню ленты (нет состояния «недозавершил»)
         if status != "active":
             await api.update_user(user.id, status="active")
-        feed_eligible = await api.get_feed_eligible(user.id)
-        if not (feed_eligible and feed_eligible.get("eligible")):
-            await message_manager.send_system(
-                message.chat.id,
-                texts.get("feed_complete_training_first", "Complete training first to unlock your feed and mailing."),
-                reply_markup=get_start_keyboard(lang),
-                tag="menu",
-                is_start=True
-            )
-            return
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
         channels = await api.get_user_channels_with_meta(user.id)
         mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))

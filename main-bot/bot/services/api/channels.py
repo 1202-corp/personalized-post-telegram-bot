@@ -21,6 +21,22 @@ class ChannelService(BaseAPIClient):
         except Exception as e:
             logger.error(f"Error getting default channels: {e}")
             return []
+
+    async def get_channels_need_refresh(self, channel_usernames: List[str]) -> List[str]:
+        """Return channel usernames that need scraping (not in DB or metadata older than TTL)."""
+        if not channel_usernames:
+            return []
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/api/v1/channels/need-refresh",
+                json={"channel_usernames": channel_usernames},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("channel_usernames", [])
+        except Exception as e:
+            logger.warning(f"Error checking channels need-refresh: {e}, will scrape all")
+            return list(channel_usernames)  # on error, refresh all to be safe
     
     async def add_user_channel(
         self,
