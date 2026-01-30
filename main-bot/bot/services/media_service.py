@@ -1,7 +1,7 @@
 """
 Media service for prefetching, caching, and downloading media files.
 
-Handles photo and video prefetching with caching to improve response times.
+Handles photo prefetching; for video posts prefetches thumbnail+play overlay as JPEG (main-bot never receives actual video).
 """
 
 import asyncio
@@ -143,11 +143,12 @@ class MediaService:
                             await self.cache.set(chat_id, post_id, "photos", photos)
             
             elif media_type == "video":
+                # get_video returns JPEG (first frame + play overlay), stored under "video" key
                 msg_id = post.get("telegram_message_id")
                 if msg_id:
-                    video_bytes = await self.user_bot.get_video(channel_username, msg_id)
-                    if video_bytes:
-                        await self.cache.set(chat_id, post_id, "video", video_bytes)
+                    photo_bytes = await self.user_bot.get_video(channel_username, msg_id)
+                    if photo_bytes:
+                        await self.cache.set(chat_id, post_id, "video", photo_bytes)
         except Exception as e:
             logger.debug(f"Prefetch failed for post {post_id}: {e}")
         finally:
@@ -215,7 +216,7 @@ class MediaService:
         chat_id: int,
         post_id: int
     ) -> Optional[bytes]:
-        """Get cached video bytes for a post."""
+        """Get cached photo bytes (JPEG, first frame + play overlay) for a video post."""
         result = await self.cache.get(chat_id, post_id, "video")
         if isinstance(result, bytes):
             return result

@@ -48,9 +48,13 @@ async def _run_new_posts_subscriber(feed_service: RealtimeFeedService) -> None:
 
             api = get_core_api()
             post_id = data.get("post_id")
+            logger.info(f"[NEW_POSTS_SUBSCRIBER] Получено событие: channel_telegram_id={channel_telegram_id}, post_id={post_id}, channel_username={data.get('channel_username')}")
             if post_id is not None:
+                logger.info(f"[NEW_POSTS_SUBSCRIBER] Вызываю get_post_recipients для post_id={post_id}")
                 telegram_ids = await api.get_post_recipients(post_id)
+                logger.info(f"[NEW_POSTS_SUBSCRIBER] get_post_recipients вернул {len(telegram_ids)} получателей: {telegram_ids[:10]}{'...' if len(telegram_ids) > 10 else ''}")
             else:
+                logger.info(f"[NEW_POSTS_SUBSCRIBER] post_id отсутствует, использую get_mailing_recipients_by_telegram_id для channel_telegram_id={channel_telegram_id}")
                 telegram_ids = await api.get_mailing_recipients_by_telegram_id(channel_telegram_id)
             if not telegram_ids:
                 logger.debug("No mailing recipients for channel_telegram_id=%s", channel_telegram_id)

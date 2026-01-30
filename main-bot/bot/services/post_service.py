@@ -178,11 +178,11 @@ class PostService:
                 tag=tag,
             )
         
-        # Send buttons separately (like/dislike)
+        # Send buttons separately (like/dislike/skip)
         if keyboard:
             await self.message_manager.send_temporary(
                 chat_id,
-                "👆",
+                "👆 Как вам данный пост?",
                 reply_markup=keyboard,
                 tag=f"{tag}_buttons",
             )

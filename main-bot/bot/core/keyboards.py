@@ -189,8 +189,8 @@ def get_settings_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     """Settings menu keyboard. Retrain is per-channel only (removed from here)."""
     t = get_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t.get("settings_btn_delete_account", default="🗑️ Delete account"), callback_data="delete_account")],
         [InlineKeyboardButton(text=t.get("settings_btn_language", default="🌐 Language"), callback_data="change_language")],
+        [InlineKeyboardButton(text=t.get("settings_btn_delete_account", default="🗑️ Delete account"), callback_data="delete_account")],
         [InlineKeyboardButton(text=t.get("settings_btn_back", default="⬅️ Back"), callback_data="back_to_feed")],
     ])
 
@@ -241,9 +241,11 @@ def get_channels_view_keyboard(lang: str = "en_US", has_bonus_channel: bool = Fa
 
 
 def get_channels_list_keyboard(channels: list, lang: str = "en_US") -> InlineKeyboardMarkup:
-    """One inline button per channel (alias: title or @username) + Back."""
+    """Add channel first, then one button per channel, then Back."""
     t = get_texts(lang)
-    buttons = []
+    buttons = [
+        [InlineKeyboardButton(text=t.get("feed_btn_add_channel", default="➕ Add Channel"), callback_data="add_channel_feed")],
+    ]
     for ch in channels:
         channel_id = ch.get("id")
         if channel_id is None:

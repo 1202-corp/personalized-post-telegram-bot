@@ -131,6 +131,10 @@ class APIServiceProtocol(Protocol):
         """Trigger model training for user."""
         ...
 
+    async def mark_training_complete(self, telegram_id: int) -> Optional[Dict[str, Any]]:
+        """Mark user training complete (status TRAINED, role member, notify Redis)."""
+        ...
+
 
 class MediaServiceProtocol(Protocol):
     """Protocol for media service (prefetch, cache, download)."""

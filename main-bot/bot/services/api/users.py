@@ -152,3 +152,16 @@ class UserService(BaseAPIClient):
             None,
         )
 
+    async def mark_training_complete(
+        self, telegram_id: int, *, skip_notify: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """Mark user training as complete. skip_notify=True when completion was from chat (no Redis)."""
+        url = f"{self.base_url}/api/v1/users/{telegram_id}/training-complete"
+        if skip_notify:
+            url += "?skip_notify=true"
+        return await self._handle_request(
+            f"marking training complete for {telegram_id}",
+            lambda: self.client.post(url),
+            None,
+        )
+
