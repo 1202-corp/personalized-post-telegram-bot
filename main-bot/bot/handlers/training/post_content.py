@@ -5,7 +5,7 @@ import base64
 import logging
 from typing import Optional, Any
 
-from aiogram.types import InputMediaPhoto, BufferedInputFile
+from aiogram.types import InputMediaPhoto, BufferedInputFile, InlineKeyboardMarkup
 
 from bot.core import MessageManager
 from bot.core.message_registry import ManagedMessage, MessageType
@@ -93,6 +93,7 @@ async def get_post_content_for_display(
             cached_media_data = cached_content.get("media_data")
             cached_telegram_file_id = cached_content.get("telegram_file_id")
 
+    # Fallback: no content in Redis — fetch from user-bot and cache (text + media; telegram_file_id saved after first send)
     if not post_text and not cached_media_data and channel_username and msg_id:
         full_content = await user_bot.get_post_full_content(channel_username, msg_id)
         if full_content:
@@ -123,9 +124,11 @@ async def send_training_post_content(
     cached_media_data: Optional[str],
     cached_telegram_file_id: Optional[str],
     message_manager: MessageManager,
+    reply_markup: Optional[InlineKeyboardMarkup] = None,
+    lang: str = "en_US",
 ) -> Optional[int]:
     """
-    Send one training post as REGULAR message (text/media only, no buttons).
+    Send one training post as REGULAR message (text/media + optional 'Open in channel' + Main menu on last).
     Returns the message_id of the sent post (for reaction), or None.
     """
     post_id = post.get("id", 0)
@@ -192,7 +195,10 @@ async def send_training_post_content(
                     post_msg = await message_manager.send_regular(
                         chat_id=chat_id,
                         text=text,
+                        reply_markup=reply_markup,
                         tag="training_post_content",
+                        add_main_menu=False,  # no main menu on posts during training
+                        lang=lang,
                     )
                     if post_msg:
                         post_message_id = post_msg.message_id
@@ -200,7 +206,10 @@ async def send_training_post_content(
                     post_msg = await message_manager.send_regular(
                         chat_id=chat_id,
                         text=text,
+                        reply_markup=reply_markup,
                         tag="training_post_content",
+                        add_main_menu=False,  # no main menu on posts during training
+                        lang=lang,
                     )
                     if post_msg:
                         post_message_id = post_msg.message_id
@@ -212,7 +221,10 @@ async def send_training_post_content(
                         chat_id=chat_id,
                         text=text,
                         photo=cached_telegram_file_id,
+                        reply_markup=reply_markup,
                         tag="training_post_content",
+                        add_main_menu=False,  # no main menu on posts during training
+                        lang=lang,
                     )
                     if post_msg:
                         post_message_id = post_msg.message_id
@@ -231,10 +243,14 @@ async def send_training_post_content(
                                 text=text,
                                 photo_bytes=photo_bytes,
                                 photo_filename=f"{mid}.jpg",
+                                reply_markup=reply_markup,
                                 tag="training_post_content",
+                                add_main_menu=False,  # no main menu on posts during training
+                                lang=lang,
                             )
                             if post_msg:
                                 post_message_id = post_msg.message_id
+                                # Save telegram file_id so other users can send by file_id (no re-download)
                                 if post_id and post_msg.photo:
                                     await post_cache.set_post_content(
                                         post_id, telegram_file_id=post_msg.photo[-1].file_id
@@ -256,7 +272,10 @@ async def send_training_post_content(
                             post_msg = await message_manager.send_regular(
                                 chat_id=chat_id,
                                 text=text,
+                                reply_markup=reply_markup,
                                 tag="training_post_content",
+                                add_main_menu=False,  # no main menu on posts during training
+                                lang=lang,
                             )
                             if post_msg:
                                 post_message_id = post_msg.message_id
@@ -264,7 +283,10 @@ async def send_training_post_content(
                         post_msg = await message_manager.send_regular(
                             chat_id=chat_id,
                             text=text,
+                            reply_markup=reply_markup,
                             tag="training_post_content",
+                            add_main_menu=False,  # no main menu on posts during training
+                            lang=lang,
                         )
                         if post_msg:
                             post_message_id = post_msg.message_id
@@ -272,7 +294,10 @@ async def send_training_post_content(
             post_msg = await message_manager.send_regular(
                 chat_id=chat_id,
                 text=text,
+                reply_markup=reply_markup,
                 tag="training_post_content",
+                add_main_menu=False,  # no main menu on posts during training
+                lang=lang,
             )
             if post_msg:
                 post_message_id = post_msg.message_id
@@ -298,7 +323,10 @@ async def send_training_post_content(
                 chat_id=chat_id,
                 text=text,
                 photo=cached_telegram_file_id,
+                reply_markup=reply_markup,
                 tag="training_post_content",
+                add_main_menu=False,  # no main menu on posts during training
+                lang=lang,
             )
             if post_msg:
                 post_message_id = post_msg.message_id
@@ -308,7 +336,10 @@ async def send_training_post_content(
                 text=text,
                 photo_bytes=photo_bytes,
                 photo_filename=f"{msg_id}.jpg",
+                reply_markup=reply_markup,
                 tag="training_post_content",
+                add_main_menu=False,  # no main menu on posts during training
+                lang=lang,
             )
             if post_msg:
                 post_message_id = post_msg.message_id
@@ -320,7 +351,10 @@ async def send_training_post_content(
             post_msg = await message_manager.send_regular(
                 chat_id=chat_id,
                 text=text,
+                reply_markup=reply_markup,
                 tag="training_post_content",
+                add_main_menu=False,  # no main menu on posts during training
+                lang=lang,
             )
             if post_msg:
                 post_message_id = post_msg.message_id
@@ -329,7 +363,10 @@ async def send_training_post_content(
         post_msg = await message_manager.send_regular(
             chat_id=chat_id,
             text=text,
+            reply_markup=reply_markup,
             tag="training_post_content",
+            add_main_menu=False,  # no main menu on posts during training
+            lang=lang,
         )
         if post_msg:
             post_message_id = post_msg.message_id

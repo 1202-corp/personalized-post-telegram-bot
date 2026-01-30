@@ -5,6 +5,7 @@ from bot.core.i18n import get_texts, TextManager
 from bot.core.keyboards import (
     get_start_keyboard,
     get_onboarding_keyboard,
+    get_post_open_in_channel_keyboard,
     get_training_post_keyboard,
     get_feed_keyboard,
     get_feed_post_keyboard,
@@ -34,6 +35,7 @@ __all__ = [
     "TextManager",
     "get_start_keyboard",
     "get_onboarding_keyboard",
+    "get_post_open_in_channel_keyboard",
     "get_training_post_keyboard",
     "get_feed_keyboard",
     "get_feed_post_keyboard",

@@ -6,7 +6,7 @@ Thread-safe registry implementation using asyncio.Lock.
 
 import asyncio
 from enum import Enum
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -26,6 +26,8 @@ class ManagedMessage:
     message_type: MessageType
     created_at: datetime = field(default_factory=datetime.utcnow)
     tag: Optional[str] = None  # Optional tag for grouping (e.g., "menu", "training_post")
+    # When set, this REGULAR message was sent with "Main menu" row; base_reply_markup is the keyboard without it (for editing when next REGULAR is sent)
+    base_reply_markup: Optional[Any] = None
 
 
 class MessageRegistry:

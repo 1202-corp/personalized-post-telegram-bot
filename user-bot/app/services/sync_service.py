@@ -184,4 +184,3 @@ class SyncService:
         except Exception as e:
             logger.error(f"Failed to set channel description: {e}")
             return False
-

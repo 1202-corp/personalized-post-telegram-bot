@@ -6,7 +6,7 @@ import logging
 
 from aiogram.fsm.context import FSMContext
 
-from bot.core import MessageManager, get_texts, get_training_post_keyboard
+from bot.core import MessageManager, get_texts, get_training_post_keyboard, get_post_open_in_channel_keyboard
 from bot.services import get_user_bot, get_post_cache
 
 from bot.utils import get_user_lang as _get_user_lang
@@ -83,6 +83,9 @@ async def show_training_post(
         text = f'📰 {texts.get("from_label", default="From")}: {channel_title}\n\n'
     text += post_text if post_text else "<i>[Media content]</i>"
 
+    post_url = f"https://t.me/{channel_username}/{msg_id}" if channel_username and msg_id else None
+    post_open_kb = get_post_open_in_channel_keyboard(post_url, lang)
+
     post_message_id = await send_training_post_content(
         chat_id=chat_id,
         post=post,
@@ -91,9 +94,11 @@ async def show_training_post(
         cached_media_data=cached_media_data,
         cached_telegram_file_id=cached_telegram_file_id,
         message_manager=message_manager,
+        reply_markup=post_open_kb,
+        lang=lang,
     )
 
-    # Now send temporary message with progress and buttons
+    # Now send temporary message with progress and buttons (like/skip/dislike; "Open in channel" is on the post)
     # Use initial_queue_size for total (saved at start, doesn't change)
     rated_count = data.get("rated_count", 0)
     initial_queue_size = data.get("initial_queue_size", len(queue) if queue else len(posts))

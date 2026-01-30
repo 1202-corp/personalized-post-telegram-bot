@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Number of posts to scrape per channel (pool size, should be larger than initial queue)
     posts_per_channel: int = 12
     # Number of posts per channel for initial training queue
-    training_initial_posts_per_channel: int = 7
+    training_initial_posts_per_channel: int = 8
     # Number of recent posts per channel to consider for training pool
     training_recent_posts_per_channel: int = 50
     # Base number of posts to show in a single training session
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Max extra posts that can be added due to dislikes
     training_max_extra_from_dislike: int = 5
     # Max extra posts that can be added due to skips
-    training_max_extra_from_skip: int = 10
+    training_max_extra_from_skip: int = 7
     # Bonus channel limits: member = 1, admin = 20
     bonus_channel_limit_member: int = 1
     bonus_channel_limit_admin: int = 20

@@ -73,8 +73,11 @@ async def on_feed_interaction(
     if len(_processed_feed_callbacks) > 100:
         _processed_feed_callbacks.clear()
     
-    _, action, post_id = callback.data.split(":")
-    post_id = int(post_id)
+    parts = callback.data.split(":")
+    action = parts[1]
+    post_id = int(parts[2])
+    # post_message_id is the Telegram message_id of the post (so reaction is set on the correct message when several posts in a row)
+    post_message_id = int(parts[3]) if len(parts) >= 4 else None
     
     # Show toast based on action
     if action == "like":
@@ -95,13 +98,19 @@ async def on_feed_interaction(
         await api.create_interaction(user_id, post_id, action)
     
     # Delete the question message with buttons
+    deleted_msg_id = callback.message.message_id
     try:
-        await message_manager.bot.delete_message(chat_id, callback.message.message_id)
+        await message_manager.bot.delete_message(chat_id, deleted_msg_id)
     except Exception:
         pass
+    # So the "Main menu" button moves to the post message above
+    await message_manager.registry.remove(chat_id, deleted_msg_id)
+    lang = await _get_user_lang(user_id)
+    await message_manager.ensure_main_menu_on_last_regular(chat_id, lang)
 
-    # Set reaction on the post (message before the question message)
-    post_message_id = callback.message.message_id - 1
+    # Set reaction on the post message (use post_message_id from callback if present, else previous message)
+    if post_message_id is None:
+        post_message_id = callback.message.message_id - 1
     reaction_emoji = "👍" if action == "like" else "👎" if action == "dislike" else "⏭️" if action == "skip" else None
     if reaction_emoji:
         try:

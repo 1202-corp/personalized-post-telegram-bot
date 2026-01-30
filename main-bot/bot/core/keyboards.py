@@ -2,6 +2,7 @@
 Keyboard builders for inline buttons.
 """
 
+from typing import Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from bot.core.config import get_settings
 from bot.core.i18n import TEXTS, get_texts, get_supported_languages
@@ -104,18 +105,55 @@ def get_add_channel_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
     ])
 
 
-def get_training_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardMarkup:
-    """Keyboard for rating a training post with progress."""
+def get_main_menu_button(lang: str = "en_US") -> InlineKeyboardMarkup:
+    """Single row: 'Main menu' button — shown only under the last REGULAR message."""
     t = get_texts(lang)
-    buttons = [
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=t.get("main_menu_btn", default="📋 Main menu"),
+            callback_data="show_main_menu",
+        )],
+    ])
+
+
+def append_main_menu_row(
+    keyboard: Optional[InlineKeyboardMarkup], lang: str = "en_US"
+) -> InlineKeyboardMarkup:
+    """Append 'Main menu' row to keyboard. If keyboard is None, return only main menu button."""
+    main_row = get_main_menu_button(lang).inline_keyboard[0]
+    if keyboard is None or not keyboard.inline_keyboard:
+        return InlineKeyboardMarkup(inline_keyboard=[main_row])
+    return InlineKeyboardMarkup(
+        inline_keyboard=keyboard.inline_keyboard + [main_row]
+    )
+
+
+def get_post_open_in_channel_keyboard(
+    post_url: Optional[str], lang: str = "en_US"
+) -> Optional[InlineKeyboardMarkup]:
+    """Keyboard with only 'Open in channel' button — attach to the post message itself."""
+    if not post_url:
+        return None
+    t = get_texts(lang)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=t.get("post_btn_open_in_channel", default="🔗 Open in channel"),
+            url=post_url,
+        )],
+    ])
+
+
+def get_training_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardMarkup:
+    """Keyboard for rating a training post (progress + like/skip/dislike). 'Open in channel' is on the post message."""
+    t = get_texts(lang)
+    return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="👍", callback_data=f"rate:like:{post_id}"),
             InlineKeyboardButton(text="⏭️", callback_data=f"rate:skip:{post_id}"),
             InlineKeyboardButton(text="👎", callback_data=f"rate:dislike:{post_id}"),
         ],
         [InlineKeyboardButton(text=t.get("settings_btn_back", default="◀ Back"), callback_data="back_to_start")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    ])
 
 
 def get_miniapp_keyboard(lang: str = "en_US") -> InlineKeyboardMarkup:
@@ -173,14 +211,23 @@ def get_feed_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_feed_post_keyboard(post_id: int, lang: str = "en_US") -> InlineKeyboardMarkup:
-    """Keyboard for a feed post."""
+def get_feed_post_keyboard(
+    post_id: int,
+    lang: str = "en_US",
+    post_message_id: Optional[int] = None,
+) -> InlineKeyboardMarkup:
+    """
+    Keyboard for 'How do you like this post?' message (like/skip/dislike).
+    'Open in channel' is attached to the post message itself, not here.
+    If post_message_id is set, it is stored in callback_data so the reaction is set on the exact post message.
+    """
     t = get_texts(lang)
+    suffix = f":{post_message_id}" if post_message_id is not None else ""
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=t.get("feed_post_btn_like", default="👍"), callback_data=f"feed:like:{post_id}"),
-            InlineKeyboardButton(text=t.get("feed_post_btn_skip", default="⏭"), callback_data=f"feed:skip:{post_id}"),
-            InlineKeyboardButton(text=t.get("feed_post_btn_dislike", default="👎"), callback_data=f"feed:dislike:{post_id}"),
+            InlineKeyboardButton(text=t.get("feed_post_btn_like", default="👍"), callback_data=f"feed:like:{post_id}{suffix}"),
+            InlineKeyboardButton(text=t.get("feed_post_btn_skip", default="⏭"), callback_data=f"feed:skip:{post_id}{suffix}"),
+            InlineKeyboardButton(text=t.get("feed_post_btn_dislike", default="👎"), callback_data=f"feed:dislike:{post_id}{suffix}"),
         ],
     ])
 
