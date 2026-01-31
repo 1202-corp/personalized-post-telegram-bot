@@ -53,9 +53,12 @@ async def on_mailing_toggle_all(callback: CallbackQuery, message_manager: Messag
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     channels = await api.get_user_channels_with_meta(user_id)
+    logger.info(f"[MAILING_TOGGLE] user={user_id}, channels={channels}")
     mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
     new_state = not mailing_any_on
+    logger.info(f"[MAILING_TOGGLE] user={user_id}, mailing_any_on={mailing_any_on}, new_state={new_state}")
     result = await api.patch_user_all_channels_mailing(user_id, new_state)
+    logger.info(f"[MAILING_TOGGLE] user={user_id}, patch result={result}")
     if result is None:
         await message_manager.send_toast(
             callback,
