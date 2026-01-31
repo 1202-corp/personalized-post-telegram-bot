@@ -122,7 +122,17 @@ class MessageManager:
                 except TelegramBadRequest as e:
                     if "message is not modified" in str(e).lower():
                         return None  # Same content, no change needed
-                    # Message may be photo — try edit_message_caption before recreating
+                    # We're sending text-only (no photo): if edit_message_text failed, existing is likely a photo message.
+                    # Don't use edit_message_caption (would keep the photo); recreate so we show text without photo.
+                    if photo is None and photo_bytes is None:
+                        logger.debug("System message is photo but we send text-only, recreating")
+                        new_message = await self._send_new_system(
+                            chat_id, text, reply_markup, tag, photo, photo_bytes, photo_filename
+                        )
+                        await self._delete_message(chat_id, existing.message_id)
+                        await self.registry.remove(chat_id, existing.message_id)
+                        return new_message
+                    # We're sending photo: try edit_message_caption before recreating
                     try:
                         await self.bot.edit_message_caption(
                             chat_id=chat_id,

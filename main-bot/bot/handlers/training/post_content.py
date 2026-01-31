@@ -94,6 +94,7 @@ async def get_post_content_for_display(
             cached_telegram_file_id = cached_content.get("telegram_file_id")
 
     # Fallback: no content in Redis — fetch from user-bot and cache (text + media; telegram_file_id saved after first send)
+    message_gone = False
     if not post_text and not cached_media_data and channel_username and msg_id:
         full_content = await user_bot.get_post_full_content(channel_username, msg_id)
         if full_content:
@@ -107,13 +108,19 @@ async def get_post_content_for_display(
                     media_type=cached_media_type,
                     media_data=cached_media_data,
                 )
+        else:
+            # Message no longer exists in Telegram (deleted) — caller should invalidate post and take another
+            message_gone = True
 
-    return {
+    result = {
         "text": post_text,
         "media_type": cached_media_type,
         "media_data": cached_media_data,
         "telegram_file_id": cached_telegram_file_id,
     }
+    if message_gone:
+        result["_message_gone"] = True
+    return result
 
 
 async def send_training_post_content(

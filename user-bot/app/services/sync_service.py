@@ -88,13 +88,15 @@ class SyncService:
                     "posted_at": post["posted_at"],
                 })
             
+            payload = {
+                "channel_telegram_id": channel_telegram_id,
+                "posts": post_data,
+                "for_training": for_training,
+            }
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     f"{self.core_api_url}/api/v1/posts/bulk",
-                    json={
-                        "channel_telegram_id": channel_telegram_id,
-                        "posts": post_data,
-                    }
+                    json=payload,
                 )
                 return response.status_code in [200, 201]
         except Exception as e:

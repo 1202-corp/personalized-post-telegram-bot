@@ -119,7 +119,7 @@ async def on_bonus_channel_input(
     )
     join_result = await user_bot.join_channel(username)
     if join_result and join_result.get("success"):
-        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
+        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel, for_training=True)
         user_obj = message.from_user
         await api.get_or_create_user(
             telegram_id=user_id,

@@ -20,9 +20,6 @@ from bot.services.api.ml import MLService
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# TTL for post content cache: 6 hours
-CACHE_TTL_SECONDS = 6 * 60 * 60  # 21600 seconds
-
 
 class CoreAPIClient:
     """Unified client for api service with all domain services."""
@@ -370,6 +367,7 @@ class PostCacheClient:
         media_type: Optional[str] = None,
         media_data: Optional[str] = None,  # base64 encoded string
         telegram_file_id: Optional[str] = None,
+        ttl_seconds: Optional[int] = None,
     ) -> bool:
         """
         Cache post content (text and media) in Redis.
@@ -380,6 +378,7 @@ class PostCacheClient:
             media_type: Type of media (photo, video, etc.)
             media_data: Media data as base64 encoded string
             telegram_file_id: Telegram file_id after bot sent this media (avoids re-download)
+            ttl_seconds: TTL in seconds. None = training TTL from config. Use settings.realtime_cache_ttl_seconds for realtime posts.
             
         Returns:
             True if successful, False otherwise
@@ -388,6 +387,7 @@ class PostCacheClient:
             from datetime import datetime
             redis_client = await self._get_redis_client()
             cache_key = self._get_cache_key(post_id)
+            ttl = ttl_seconds if ttl_seconds is not None else settings.cache_ttl_seconds
             
             cache_data: dict = {}
             if text is not None or media_type is not None or media_data is not None:
@@ -403,7 +403,7 @@ class PostCacheClient:
             
             if cache_data:
                 await redis_client.hset(cache_key, mapping=cache_data)
-            await redis_client.expire(cache_key, CACHE_TTL_SECONDS)
+            await redis_client.expire(cache_key, ttl)
             
             logger.debug(f"Cached post content (post_id={post_id}, has_text={text is not None}, has_media={media_data is not None}, has_file_id={telegram_file_id is not None})")
             return True

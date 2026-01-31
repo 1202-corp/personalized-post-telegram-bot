@@ -15,8 +15,10 @@ import html
 from bot.services import get_core_api, get_user_bot, get_post_cache
 from bot.core.message_manager import MessageManager
 from bot.core import get_feed_post_keyboard, get_post_open_in_channel_keyboard, get_texts
+from bot.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+_settings = get_settings()
 
 
 class RealtimeFeedService:
@@ -212,8 +214,17 @@ class RealtimeFeedService:
                     )
                     if post_id and msg and msg.photo:
                         cache = get_post_cache()
-                        await cache.set_post_content(post_id, telegram_file_id=msg.photo[-1].file_id)
+                        await cache.set_post_content(
+                            post_id,
+                            telegram_file_id=msg.photo[-1].file_id,
+                            ttl_seconds=_settings.realtime_cache_ttl_seconds,
+                        )
                 else:
+                    # Message no longer exists in Telegram — invalidate post and skip sending
+                    if post_id:
+                        api = get_core_api()
+                        await api.posts.invalidate_post_message_gone(post_id)
+                        logger.info(f"Realtime post {post_id} message gone, invalidated and skipped for user {user_id}")
                     msg = None
             if msg:
                 post_message_id = msg.message_id

@@ -78,7 +78,7 @@
   "confirm_btn_no": "❌ No",
   "cancel_btn_cancel": "❌ Cancel",
   "retrain_intro": "🔄 <b>Retraining Your Feed</b>\n\nI'll show you some posts from your channels. Rate them to help me improve your recommendations.\n\nThis will update your personalized feed with better content!",
-  "training_progress": "🎯 Training Progress: {current}/{total} posts rated\n\nRate each post to train your personalized feed!",
+  "training_progress": "🎯 Training Progress: <b>{current}/{total}</b> posts rated\n\nRate each post to train your personalized feed!",
   "onboarding_btn_open_miniapp": "📱 Train in MiniApp",
   "onboarding_btn_rate_in_chat": "💬 Rate in Chat",
   "retrain_btn_miniapp": "📱 Retrain in MiniApp",

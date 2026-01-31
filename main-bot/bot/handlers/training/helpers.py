@@ -7,7 +7,7 @@ import logging
 from aiogram.fsm.context import FSMContext
 
 from bot.core import MessageManager, get_texts, get_training_post_keyboard, get_post_open_in_channel_keyboard
-from bot.services import get_user_bot, get_post_cache
+from bot.services import get_core_api, get_user_bot, get_post_cache
 
 from bot.utils import get_user_lang as _get_user_lang
 
@@ -55,6 +55,15 @@ async def show_training_post(
     post_cache = get_post_cache()
     user_bot = get_user_bot()
     content = await get_post_content_for_display(post_id, post, post_cache, user_bot)
+    if content.get("_message_gone") and post_id:
+        api = get_core_api()
+        await api.posts.invalidate_post_message_gone(post_id)
+        logger.info(f"Training post {post_id} message gone, invalidated and skipping to next")
+        if queue:
+            await state.update_data(training_queue=queue[1:])
+        else:
+            await state.update_data(current_post_index=index + 1)
+        return await show_training_post(chat_id, message_manager, state)
     post_text = content["text"]
     cached_media_type = content["media_type"]
     cached_media_data = content["media_data"]

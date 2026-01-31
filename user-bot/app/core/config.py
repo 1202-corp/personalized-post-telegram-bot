@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     # Telegram API credentials (from https://my.telegram.org)
     telegram_api_id: int
     telegram_api_hash: str
+    # Session: either file path (e.g. sessions/212349567_telethon.session) or string (TELEGRAM_SESSION_STRING)
+    telegram_session_file: str = ""  # If set, use .session file; otherwise use telegram_session_string
     telegram_session_string: str = ""
     
     # Core API URL
