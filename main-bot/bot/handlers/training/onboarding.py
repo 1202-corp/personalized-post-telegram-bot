@@ -81,7 +81,17 @@ async def on_start_training(
     await message_manager.send_toast(callback)
     api = get_core_api()
     user_bot = get_user_bot()
-    user_id = callback.from_user.id
+    user = callback.from_user
+    user_id = user.id
+    
+    # Ensure user exists (restore if soft-deleted) with TRAINING status
+    await api.get_or_create_user(
+        telegram_id=user_id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        language_code=user.language_code,
+    )
     await api.update_activity(user_id)
     
     lang = await _get_user_lang(user_id)
