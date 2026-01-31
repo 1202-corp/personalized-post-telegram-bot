@@ -9,6 +9,7 @@ from datetime import datetime
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from pathlib import Path
 from telethon.tl.functions.channels import JoinChannelRequest, GetFullChannelRequest
 from telethon.tl.types import Channel, Message
 from telethon.errors import (
@@ -46,16 +47,32 @@ class TelethonService:
                 return
             
             try:
-                session = StringSession(settings.telegram_session_string)
-                self._client = TelegramClient(
-                    session,
-                    settings.telegram_api_id,
-                    settings.telegram_api_hash,
-                )
+                if settings.telegram_session_file and settings.telegram_session_file.strip():
+                    session_path = settings.telegram_session_file.strip()
+                    if not Path(session_path).is_absolute():
+                        session_path = str(Path.cwd() / session_path)
+                    self._client = TelegramClient(
+                        session_path,
+                        settings.telegram_api_id,
+                        settings.telegram_api_hash,
+                    )
+                    logger.info("Using session file: %s", session_path)
+                elif settings.telegram_session_string and settings.telegram_session_string.strip():
+                    session = StringSession(settings.telegram_session_string.strip())
+                    self._client = TelegramClient(
+                        session,
+                        settings.telegram_api_id,
+                        settings.telegram_api_hash,
+                    )
+                    logger.info("Using session string")
+                else:
+                    raise RuntimeError(
+                        "Set either TELEGRAM_SESSION_FILE (path to .session file) or TELEGRAM_SESSION_STRING"
+                    )
                 await self._client.connect()
-                
+
                 if not await self._client.is_user_authorized():
-                    logger.error("Telegram client not authorized. Please generate a session string.")
+                    logger.error("Telegram client not authorized. Use session file or generate a session string.")
                     raise RuntimeError("Telegram client not authorized")
                 
                 self._connected = True

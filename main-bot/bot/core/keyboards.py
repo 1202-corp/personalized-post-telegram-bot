@@ -316,7 +316,7 @@ def get_channel_detail_keyboard(
     toggle_text = t.get("channel_btn_mailing_off", "🔔 Disable mailing") if mailing_enabled else t.get("channel_btn_mailing_on", "🔕 Enable mailing")
     buttons = [
         [InlineKeyboardButton(text=toggle_text, callback_data=f"channel_mailing_toggle:{channel_id}")],
-        [InlineKeyboardButton(text=t.get("channel_btn_retrain", default="🎯 Retrain feed"), callback_data="retrain")],
+        [InlineKeyboardButton(text=t.get("channel_btn_retrain", default="🎯 Retrain feed"), callback_data=f"retrain_channel:{channel_id}")],
     ]
     if can_delete:
         buttons.append([InlineKeyboardButton(text=t.get("channel_btn_delete", default="🗑️ Remove channel"), callback_data=f"channel_delete:{channel_id}")])

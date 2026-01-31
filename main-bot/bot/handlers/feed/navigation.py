@@ -100,6 +100,9 @@ async def on_cancel(
     user_data = await api.get_user(user_id)
 
     if user_data and user_data.get("user_role") in ("member", "admin"):
+        # Restore status if they cancelled during channel retrain (channel stays in list)
+        if state_data.get("is_channel_retrain") or user_data.get("status") == "training":
+            await api.update_user(user_id, status="active")
         has_bonus = user_data.get("bonus_channels_count", 0) >= 1
         channels = await api.get_user_channels_with_meta(user_id)
         mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
@@ -109,7 +112,10 @@ async def on_cancel(
             get_feed_keyboard(lang, has_bonus_channel=has_bonus, mailing_any_on=mailing_any_on),
             message_manager,
         )
-    elif current_state and "training" in str(current_state).lower():
+    elif current_state and "training" in str(current_state).lower() and not state_data.get("is_channel_retrain"):
+        # Initial training cancelled: guest back to new, guest
+        if user_data and user_data.get("user_role") not in ("member", "admin"):
+            await api.update_user(user_id, status="new", user_role="guest")
         await show_menu(
             callback.message.chat.id,
             texts.get("training_intro"),

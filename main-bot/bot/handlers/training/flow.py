@@ -13,7 +13,7 @@ from bot.core import MessageManager, get_texts, get_feed_keyboard, get_feed_post
 from bot.services import get_core_api, get_user_bot, get_post_cache
 
 from .helpers import _get_user_lang, show_training_post
-from .post_content import ensure_first_posts_cached, get_media_service
+from .post_content import ensure_first_posts_cached, get_media_service, get_post_content_for_display
 
 logger = logging.getLogger(__name__)
 
@@ -85,21 +85,24 @@ async def finish_training_flow(
     user_id = data.get("user_id")
 
     if user_id:
-        # Add training channels to user's list only on successful completion (not when aborted)
-        channel_usernames = data.get("training_channel_usernames") or []
-        bonus_usernames = {
-            (x or "").strip().lstrip("@").lower()
-            for x in (data.get("training_bonus_usernames") or [])
-        }
-        for ch in channel_usernames:
-            ch_clean = (ch or "").strip().lstrip("@").lower()
-            if ch_clean:
-                await api.channels.add_user_channel(
-                    user_id,
-                    ch_clean,
-                    is_for_training=ch_clean not in bonus_usernames,
-                    is_bonus=ch_clean in bonus_usernames,
-                )
+        # Add training channels to user's list only on successful completion (not when aborted).
+        # Skip when is_channel_retrain: channel is already in the list, we only refresh preferences.
+        is_channel_retrain = data.get("is_channel_retrain", False)
+        if not is_channel_retrain:
+            channel_usernames = data.get("training_channel_usernames") or []
+            bonus_usernames = {
+                (x or "").strip().lstrip("@").lower()
+                for x in (data.get("training_bonus_usernames") or [])
+            }
+            for ch in channel_usernames:
+                ch_clean = (ch or "").strip().lstrip("@").lower()
+                if ch_clean:
+                    await api.channels.add_user_channel(
+                        user_id,
+                        ch_clean,
+                        is_for_training=ch_clean not in bonus_usernames,
+                        is_bonus=ch_clean in bonus_usernames,
+                    )
 
         await api.mark_training_complete(user_id, skip_notify=True)
         exclude_post_ids = [p.get("id") for p in training_posts if p.get("id") is not None]
@@ -184,11 +187,25 @@ async def send_initial_best_post(
                 (result or {}).get("message"),
             )
 
-    all_posts = await api.get_best_posts(user_id, limit=1, exclude_post_ids=exclude_post_ids or [])
-    if not all_posts:
+    exclude = list(exclude_post_ids or [])
+    initial_best_post = None
+    for _ in range(5):
+        all_posts = await api.get_best_posts(user_id, limit=1, exclude_post_ids=exclude or None)
+        if not all_posts:
+            return
+        candidate = all_posts[0]
+        post_id = candidate.get("id")
+        cache = get_post_cache()
+        content = await get_post_content_for_display(post_id, candidate, cache, user_bot)
+        if content.get("_message_gone") and post_id:
+            await api.posts.invalidate_post_message_gone(post_id)
+            exclude.append(post_id)
+            continue
+        initial_best_post = candidate
+        break
+    if not initial_best_post:
         return
 
-    initial_best_post = all_posts[0]
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     question_text = texts.get("feed_post_question", "👆 Как вам данный пост?")

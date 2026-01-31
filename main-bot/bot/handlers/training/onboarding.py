@@ -113,7 +113,7 @@ async def on_start_training(
             pass
         user_bot = get_user_bot()
         scrape_tasks = [
-            user_bot.scrape_channel(ch, limit=settings.training_recent_posts_per_channel)
+            user_bot.scrape_channel(ch, limit=settings.training_recent_posts_per_channel, for_training=True)
             for ch in need_refresh
         ]
         await asyncio.gather(*scrape_tasks, return_exceptions=True)
@@ -356,7 +356,7 @@ async def on_channel_input(
     join_result = await user_bot.join_channel(username)
     
     if join_result and join_result.get("success"):
-        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
+        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel, for_training=True)
         await api.add_user_channel(user_id, username, is_bonus=False)
         
         await message_manager.delete_temporary(message.chat.id, tag="loading")
@@ -410,34 +410,58 @@ async def on_back_to_start(
     message_manager: MessageManager,
     state: FSMContext
 ):
-    """Go back to start menu."""
+    """Go back to start menu, or to feed if user is member/admin (e.g. cancelled bonus training)."""
     await message_manager.send_toast(callback)
-    
-    # Clear training state if in training
+
+    state_data = await state.get_data()
     await state.clear()
-    
-    # Delete temporary messages
+
     await message_manager.delete_temporary(callback.message.chat.id, tag="training_post_controls")
-    
-    lang = await _get_user_lang(callback.from_user.id)
+
+    from bot.services import get_core_api
+    from bot.core import get_start_keyboard, get_feed_keyboard
+    api = get_core_api()
+    user_id = callback.from_user.id
+    user_data = await api.get_user(user_id)
+    lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     name = html.escape(callback.from_user.first_name or "there")
-    
-    # Use edit_system to ensure temporary messages are deleted
-    from bot.core import get_start_keyboard
+
+    # If member/admin (e.g. bonus training or channel retrain), go to feed and restore status
+    if user_data and user_data.get("user_role") in ("member", "admin"):
+        if state_data.get("is_bonus_training") or state_data.get("is_channel_retrain") or user_data.get("status") == "training":
+            await api.update_user(user_id, status="active")
+        has_bonus = (user_data or {}).get("bonus_channels_count", 0) >= 1
+        channels = await api.get_user_channels_with_meta(user_id)
+        mailing_any_on = any(c.get("mailing_enabled") for c in (channels or []))
+        success = await message_manager.edit_system(
+            callback.message.chat.id,
+            texts.get("feed_ready"),
+            reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus, mailing_any_on=mailing_any_on),
+            tag="menu",
+        )
+        if not success:
+            await message_manager.send_system(
+                callback.message.chat.id,
+                texts.get("feed_ready"),
+                reply_markup=get_feed_keyboard(lang, has_bonus_channel=has_bonus, mailing_any_on=mailing_any_on),
+                tag="menu",
+            )
+        return
+
+    # Guest: show start menu
     success = await message_manager.edit_system(
         callback.message.chat.id,
         texts.get("welcome", name=name),
         reply_markup=get_start_keyboard(lang),
-        tag="menu"
+        tag="menu",
     )
     if not success:
-        # Fallback to send_system if edit fails
         await message_manager.send_system(
             callback.message.chat.id,
             texts.get("welcome", name=name),
             reply_markup=get_start_keyboard(lang),
-            tag="menu"
+            tag="menu",
         )
 
 

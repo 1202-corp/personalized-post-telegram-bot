@@ -15,7 +15,7 @@ from bot.core.config import get_settings
 from bot.core.states import FeedStates
 from bot.services import get_core_api, get_user_bot
 from bot.utils import get_user_lang as _get_user_lang
-from bot.handlers.training.retrain import start_bonus_training
+from bot.handlers.training.retrain import start_bonus_training, start_channel_retrain
 
 from .common import bonus_channel_limit, show_menu
 
@@ -176,7 +176,7 @@ async def on_channel_feed_input(
     )
     join_result = await user_bot.join_channel(username)
     if join_result and join_result.get("success"):
-        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel)
+        await user_bot.scrape_channel(username, limit=settings.training_recent_posts_per_channel, for_training=True)
         user_obj = message.from_user
         await api.get_or_create_user(
             telegram_id=user_id,
@@ -217,12 +217,44 @@ async def on_my_channels(callback: CallbackQuery, message_manager: MessageManage
     await show_menu(callback.message.chat.id, text, keyboard, message_manager)
 
 
-@router.callback_query(F.data.startswith("channel_detail:"))
-async def on_channel_detail(callback: CallbackQuery, message_manager: MessageManager):
+@router.callback_query(F.data.startswith("retrain_channel:"))
+async def on_retrain_channel(
+    callback: CallbackQuery,
+    message_manager: MessageManager,
+    state: FSMContext,
+):
+    """Start retraining for this channel only (from channel detail menu)."""
     await message_manager.send_toast(callback)
     channel_id = int(callback.data.split(":")[1])
-    api = get_core_api()
     user_id = callback.from_user.id
+    await start_channel_retrain(
+        chat_id=callback.message.chat.id,
+        user_id=user_id,
+        channel_id=channel_id,
+        message_manager=message_manager,
+        state=state,
+    )
+
+
+@router.callback_query(F.data.startswith("channel_detail:"))
+async def on_channel_detail(
+    callback: CallbackQuery,
+    message_manager: MessageManager,
+    state: FSMContext,
+):
+    """Show channel detail (e.g. when returning from retrain intro via Back). Clear state so we don't mix with training/onboarding."""
+    await message_manager.send_toast(callback)
+    channel_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    # If returning from retrain intro (Back) without starting rating, restore user status from "training"
+    data = await state.get_data()
+    if data.get("retrain_channel_id") == channel_id:
+        api = get_core_api()
+        user_data = await api.get_user(user_id)
+        if user_data and user_data.get("status") == "training":
+            await api.update_user(user_id, status="active")
+    await state.clear()
+    api = get_core_api()
     lang = await _get_user_lang(user_id)
     texts = get_texts(lang)
     detail = await api.get_user_channel_detail(user_id, channel_id)

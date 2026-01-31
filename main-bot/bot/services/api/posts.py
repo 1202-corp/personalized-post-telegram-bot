@@ -115,3 +115,19 @@ class PostService(BaseAPIClient):
             logger.error(f"Error getting post recipients for post_id={post_id}: {e}")
             return []
 
+    async def invalidate_post_message_gone(self, post_id: int) -> bool:
+        """
+        Mark post as invalid (message no longer exists in Telegram).
+        Clears Redis and soft-deletes post. Call when content fetch fails because message was deleted.
+        Returns True if invalidated, False if post not found or already invalidated.
+        """
+        try:
+            response = await self.client.post(
+                f"{self.base_url}/api/v1/posts/{post_id}/invalidate-message-gone"
+            )
+            if response.status_code == 204:
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Error invalidating post {post_id} (message gone): {e}")
+            return False

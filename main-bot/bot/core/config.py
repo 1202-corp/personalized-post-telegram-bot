@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Number of posts to scrape per channel (pool size, should be larger than initial queue)
     posts_per_channel: int = 12
     # Number of posts per channel for initial training queue
-    training_initial_posts_per_channel: int = 8
+    training_initial_posts_per_channel: int = 17
     # Number of recent posts per channel to consider for training pool
     training_recent_posts_per_channel: int = 50
     # Base number of posts to show in a single training session
@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Bonus channel limits: member = 1, admin = 20
     bonus_channel_limit_member: int = 1
     bonus_channel_limit_admin: int = 20
+
+    # Post content cache TTL (seconds): training = 6h, realtime = 10 min
+    cache_ttl_seconds: int = 6 * 60 * 60  # 21600
+    realtime_cache_ttl_seconds: int = 10 * 60  # 600
 
     # Localization (using locale format: language_COUNTRY)
     default_language: str = "en_US"
